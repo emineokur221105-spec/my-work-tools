@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>全能門店管理 (分店完全版)</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2641/2641409.png">
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <link rel="stylesheet" href="shop/shop_data/style.css">
+</head>
+<body>
+
+<nav class="nav-bar">
+    <div class="app-title">
+        <a href="index.html" class="btn-home">🏠 首頁</a>
+        
+        🏢 門店管理(分店版) <span class="sync-dot" id="syncStatus"></span>
+        
+        <button id="toggleTopBarBtn" class="btn-toggle-bar" onclick="toggleTopBar()" title="收起控制列">🔼</button>
+    </div>
+    <div class="nav-buttons">
+        <button class="tab-btn active" onclick="switchTab('schedule')">排班</button>
+        <button class="tab-btn" onclick="switchTab('settle')">日結</button>
+        <button class="tab-btn" onclick="switchTab('weekly')">周結</button>
+    </div>
+</nav>
+
+<div id="view-schedule" class="view-container active">
+    <div class="schedule-top-bar">
+        <div class="control-group" style="display:flex; flex-wrap:wrap; gap:10px; width:100%; align-items:center; justify-content:space-between;">
+            
+            <div style="display:flex; gap:15px; align-items:center; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; background:#34495e; border-radius:6px; overflow:hidden; box-shadow:0 2px 5px rgba(0,0,0,0.2);">
+                    <button class="action-btn" style="background:transparent; padding:6px 12px; border-radius:0; border-right:1px solid #2c3e50; font-size:14px;" onclick="changeDay(-1)">◀</button>
+                    
+                    <input type="hidden" id="dateInput" value="12/01">
+                    
+                    <div id="navDateDisplay" style="color:#f1c40f; font-weight:bold; font-size:16px; padding:0 12px; text-align:center; cursor:pointer;" onclick="promptForDate()" title="點擊輸入特定日期">12/01</div>
+                    
+                    <button class="action-btn" style="background:transparent; padding:6px 12px; border-radius:0; border-left:1px solid #2c3e50; font-size:14px;" onclick="changeDay(1)">▶</button>
+                    <button class="action-btn" style="background:#2980b9; padding:6px 12px; border-radius:0; font-size:13px; border-left:1px solid #2c3e50;" onclick="goToToday()">今天</button>
+                </div>
+                
+                <div class="real-time-clock" id="topClock" style="font-size: 20px; font-weight: bold; color: #2ecc71; letter-spacing: 1px;">00:00</div>
+            </div>
+
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <div class="time-settings" style="background:rgba(0,0,0,0.3); padding:4px 8px; border-radius:6px;">
+                    <span>開</span><input type="number" id="openHour" value="12" onchange="saveScheduleData(); renderScheduleAll()">
+                    <span style="margin-left:5px;">閉</span><input type="number" id="closeHour" value="26" onchange="saveScheduleData(); renderScheduleAll()">
+                </div>
+                <button class="action-btn" style="background:#8e44ad;" onclick="openRoomConfigModal()">⚙️ 房間配置</button>
+                <button class="action-btn action-btn-reset" onclick="clearAllSchedules()">清空</button>
+            </div>
+            
+        </div>
+    </div>
+    
+    <div id="scheduleRegionTabs" class="region-tabs"></div>
+
+    <div class="main-wrapper">
+        <div class="left-panel" id="leftPanel">
+            <div class="left-header-bar">人員</div>
+            <div class="left-content" id="leftContent"></div>
+        </div>
+        <div class="col-resizer" id="colResizer"></div>
+        <div class="right-panel">
+            <div class="ruler-container" id="rulerContainer">
+                <div id="ruler" style="height:100%; position:relative;"></div>
+            </div>
+            <div class="tracks-scroll-area" id="rightContent">
+                <div class="tracks-wrapper" id="trackContainer">
+                    <div class="grid-lines" id="gridBg"></div>
+                    <div id="currentTimeLine" class="current-time-line"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="view-settle" class="view-container">
+    <div class="settle-container">
+        
+        <div class="settle-header-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; background: white; padding: 12px 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-weight:bold; color:#2c3e50; font-size:15px;">📅 結算日期:</span>
+                <input type="text" id="settleDateInput" value="12/01" onchange="syncDate(this.value)" style="border:1px solid #ccc; padding:6px 10px; border-radius:6px; font-weight:bold; color:#d35400; width:120px; font-size:15px;">
+            </div>
+            <button id="lockSettleBtn" onclick="toggleSettleLock()" style="background:#2ecc71; color:white; border:none; padding:8px 15px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: 0.3s;">
+                🔓 開放編輯中 (點擊鎖定)
+            </button>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div id="settleRegionTabs" class="region-tabs" style="border: none; margin-bottom: 0; padding: 0;"></div>
+            <button onclick="downloadScreenshot()" style="background:#8e44ad; color:white; border:none; padding:8px 15px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:13px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); white-space: nowrap;">
+                📸 儲存日結長截圖
+            </button>
+        </div>
+
+        <div class="middle-section">
+            <div class="summary-area">
+                <div class="summary-card">
+                    <h4>總營收 (共收)</h4>
+                    <p id="total_revenue" class="summary-value text-green">0</p>
+                </div>
+                <div class="summary-card">
+                    <h4>總阿姨帳</h4>
+                    <p id="total_aunt" class="summary-value">0</p>
+                </div>
+                <div class="summary-card" id="agent_fee_summary_card">
+                    <h4>經紀費總計</h4>
+                    <div id="agent_fee_total_display">0</div>
+                    <div id="agent_fee_summary" class="fee-breakdown">無</div>
+                </div>
+                <div class="summary-card" id="total_net_profit_card">
+                    <h4>本日盈餘</h4>
+                    <p id="total_net_profit" class="summary-value text-blue">0</p>
+                </div>
+                <div class="summary-card">
+                    <h4>總工數</h4>
+                    <p id="total_works_summary" class="summary-value text-blue">0</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="config-section no-print">
+            <div class="config-panel" style="display:none;">
+                <h3>💰 全局底薪參數 (預設)</h3>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+                    <div class="setting-item"><label>40分/1</label><input type="number" id="base_40_1" value="1100" oninput="renderSettlementTable()"></div>
+                    <div class="setting-item"><label>60分/1</label><input type="number" id="base_60_1" value="1400" oninput="renderSettlementTable()"></div>
+                    <div class="setting-item"><label>60分/2</label><input type="number" id="base_60_2" value="1900" oninput="renderSettlementTable()"></div>
+                    <div class="setting-item"><label>120分/3</label><input type="number" id="base_120_3" value="2800" oninput="renderSettlementTable()"></div>
+                    <div class="setting-item"><label>240分/3</label><input type="number" id="base_240_3" value="4200" oninput="renderSettlementTable()"></div>
+                    <input type="hidden" id="cost_40_1" value="2300"><input type="hidden" id="cost_60_1" value="2700"><input type="hidden" id="cost_60_2" value="3300"><input type="hidden" id="cost_120_3" value="4800"><input type="hidden" id="cost_240_3" value="8100">
+                </div>
+            </div>
+            <div class="config-panel">
+                <h3>✨ 加值服務 <button id="addServiceRowBtn" class="btn-circle btn-green" onclick="addServiceRow()" style="width:24px; height:24px;">+</button></h3>
+                <div id="service_container" class="service-list"></div>
+            </div>
+        </div>
+
+        <div class="no-print" style="background:white; padding:10px; border-radius:10px; margin-bottom:15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #3498db; padding-bottom:5px; margin-bottom:10px;">
+                <h4 style="margin:0; color:#2c3e50; font-size:14px;">📊 日結總表 (LINE格式)</h4>
+                <button onclick="copyDailyReport()" style="background:#3498db; color:white; border:none; padding:6px 15px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:13px; display:flex; align-items:center; gap:5px; box-shadow: 0 2px 5px rgba(52, 152, 219, 0.3);">
+                    📋 複製總結
+                </button>
+            </div>
+            <div style="font-size:12px; color:#7f8c8d; margin-bottom:5px;">預覽內容：</div>
+            <textarea id="dailyReportPreview" readonly style="width:100%; height:120px; border:1px solid #eee; background:#f8f9fa; border-radius:6px; padding:10px; font-family:monospace; font-size:14px; color:#2c3e50; resize:none;"></textarea>
+        </div>
+        
+        <div class="no-print" style="background:white; padding:10px; border-radius:10px; margin-bottom:15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #f1c40f; padding-bottom:5px; margin-bottom:10px;">
+                <h4 style="margin:0; color:#2c3e50; font-size:14px;">📋 阿姨帳文字串 (複製用)</h4>
+                <button onclick="copyAuntText()" style="background:#2ecc71; color:white; border:none; padding:5px 10px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:12px; display:flex; align-items:center; gap:5px;">
+                    📋 一鍵複製
+                </button>
+            </div>
+            <div id="aunt_text_display" style="font-size:16px; color:#2c3e50; font-weight:bold; line-height:1.6; padding:10px; background:#f4f6f9; border-radius:6px; word-break: break-all; min-height:40px;"></div>
+        </div>
+
+        <div id="table_body" style="display:flex; flex-direction:column; gap:15px;"></div>
+    </div>
+</div>
+
+<div id="view-weekly" class="view-container">
+    <div class="settle-container">
+        
+        <div style="background:#fffcf5; padding:20px; border-radius:10px; margin-bottom:15px; border:2px dashed #f39c12; display:flex; justify-content:space-between; align-items:center; box-shadow: 0 4px 8px rgba(0,0,0,0.05);">
+            <div>
+                <h3 style="margin:0 0 5px 0; color:#d35400; font-size:16px;">💰 最終盈餘 (總收 - 阿姨 - 經紀 - 支出)</h3>
+                <div id="week_final_profit" style="font-size:38px; font-weight:900; color:#d35400; line-height: 1;">0</div>
+                <div style="margin-top: 8px; font-size: 16px; font-weight: bold; color: #e74c3c;">
+                    📉 支出總額: $<span id="week_expenses_total_top">0</span>
+                </div>
+            </div>
+            <button onclick="copyWeeklyReport()" style="background:#27ae60; color:white; border:none; padding:12px 20px; border-radius:10px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); white-space:nowrap; transition: 0.2s;">
+                📋 複製周結報表
+            </button>
+        </div>
+
+        <div style="background:white; padding:15px; border-radius:10px; margin-bottom:15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+            <h3 style="margin-top:0; color:#2c3e50; border-bottom:2px solid #3498db; padding-bottom:5px;">📅 選擇要結算的日期</h3>
+            <div id="weekly_days_container" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;"></div>
+            <button onclick="deleteSelectedDays()" style="margin-top:10px; background:#e74c3c; color:white; border:none; padding:5px 10px; border-radius:6px; font-size:12px; cursor:pointer;">🗑️ 刪除選取的日期紀錄</button>
+        </div>
+
+        <div class="summary-area" style="margin-bottom:15px;">
+            <div class="summary-card">
+                <h4>總營收 (共收)</h4>
+                <p id="week_revenue" class="summary-value text-green">0</p>
+                <div id="week_revenue_breakdown" class="fee-breakdown" style="border-top:1px dashed #ccc; margin-top:5px; padding-top:5px; font-size:12px;">無</div>
+            </div>
+            <div class="summary-card">
+                <h4>總阿姨帳</h4>
+                <p id="week_aunt" class="summary-value">0</p>
+                <div id="week_aunt_breakdown" class="fee-breakdown" style="border-top:1px dashed #ccc; margin-top:5px; padding-top:5px; font-size:12px;">無</div>
+            </div>
+            <div class="summary-card" id="week_agent_card">
+                <h4>經紀費總計</h4>
+                <div id="week_agent_total" style="font-size:18px; color:#c0392b; font-weight:bold;">$0</div>
+                <div id="week_agent_breakdown" class="fee-breakdown" style="border-top:1px dashed #ccc; margin-top:5px; padding-top:5px; font-size:12px;">無</div>
+            </div>
+            <div class="summary-card">
+                <h4>總工數</h4>
+                <p id="week_works" class="summary-value text-blue">0</p>
+                <div id="week_works_breakdown" class="fee-breakdown" style="border-top:1px dashed #ccc; margin-top:5px; padding-top:5px; font-size:12px;">無</div>
+            </div>
+            <div class="summary-card" style="background:#e1f5fe; border:2px solid #007bff;">
+                <h4>各日盈餘總和</h4>
+                <div id="week_daily_profit" style="font-size:18px; color:#007bff; font-weight:bold;">$0</div>
+                <div id="week_daily_profit_breakdown" class="fee-breakdown" style="border-top:1px dashed #3498db; margin-top:5px; padding-top:5px; font-size:12px; color:#2980b9;">無</div>
+            </div>
+        </div>
+
+        <div class="config-panel no-print" style="margin-bottom:30px; background:white; padding:15px; border-radius:10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+            <h3 style="margin:0 0 15px 0; color:#2c3e50; border-bottom:1px solid #eee; padding-bottom:8px;">
+                💸 周結支出細項 
+                <button class="btn-circle btn-red" onclick="addExpenseGroup()" style="width:28px; height:28px; float:right;" title="新增人員">+</button>
+            </h3>
+            
+            <div id="weekly_expenses_container" class="expense-grid"></div>
+            
+            <div style="text-align:right; font-weight:bold; font-size:18px; margin-top:20px; color:#e74c3c; border-top: 2px solid #eee; padding-top: 15px;">
+                支出總額: $<span id="week_expenses_total_bottom">0</span>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="editModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-title">編輯班表</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 5px 0;">
+            <span style="font-size: 14px; font-weight: bold; color: #2c3e50;">今日狀態：</span>
+            <button id="modalAttendanceBtn" class="btn-attendance" onclick="toggleModalAttendance()">🟢 上班</button>
+        </div>
+        <textarea id="modalTextarea" class="modal-textarea" placeholder="請在此貼上完整班表..."></textarea>
+        <div class="modal-btns">
+            <button class="modal-btn btn-cancel" onclick="closeEditModal()">取消</button>
+            <button class="modal-btn btn-save" onclick="saveModalData()">確定儲存</button>
+        </div>
+    </div>
+</div>
+
+<div id="timeModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 450px;">
+        <div class="modal-title" id="timeModalTitle" style="font-size: 18px; margin-bottom: 5px;">記錄服務時間</div>
+        
+        <div style="background: #f4f6f9; border: 1px solid #dcdde1; border-radius: 8px; padding: 12px; margin-bottom: 10px; font-size: 14px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="margin-bottom: 8px; border-bottom: 1px dashed #bdc3c7; padding-bottom: 8px;">
+                <div style="color: #7f8c8d; font-size: 12px; margin-bottom: 2px;">班表內容：</div>
+                <div id="modalRawContent" style="font-weight: bold; color: #2c3e50; word-break: break-word; line-height: 1.4;">--</div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: center; margin-top: 5px;">
+                <div>
+                    <div style="color: #7f8c8d; font-size: 12px;">名稱</div>
+                    <div id="modalExtractedName" style="font-weight: bold; font-size: 16px; color: #2980b9;">--</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="color: #7f8c8d; font-size: 12px;">收</div>
+                    <div id="modalRevenue" style="font-weight: bold; font-size: 16px; color: #27ae60;">0</div>
+                </div>
+                <div style="text-align: right; border-left: 1px dashed #bdc3c7; padding-left: 12px;">
+                    <div style="color: #3498db; font-size: 12px; font-weight: bold; margin-bottom: 3px;">阿姨點數</div>
+                    <input type="number" id="auntModalInput" style="width: 60px; text-align: center; font-weight: bold; font-size: 18px; color: #d35400; border: 2px solid #3498db; border-radius: 6px; background: #fff; padding: 2px 0;" placeholder="0">
+                </div>
+            </div>
+        </div>
+
+        <div class="time-input-group">
+            <div class="time-item">
+                <div class="time-label">預約時段：</div>
+                <div class="time-display" id="scheduledTime" style="width: auto; min-width: 120px; white-space: nowrap; padding: 4px 10px; text-align: center;">--:-- - --:--</div>
+            </div>
+            <div class="time-item">
+                <div class="time-label">實際進場 (IN)：</div>
+                <input type="text" class="time-display" id="inTimeInput" placeholder="--:--" inputmode="numeric" pattern="\d{2}:\d{2}">
+                <button class="btn-record" onclick="fillCurrentTime('in')">現在 IN</button>
+            </div>
+            <div class="time-item">
+                <div class="time-label">實際離場 (OUT)：</div>
+                <input type="text" class="time-display" id="outTimeInput" placeholder="--:--" inputmode="numeric" pattern="\d{2}:\d{2}">
+                <button class="btn-record" onclick="fillCurrentTime('out')">現在 OUT</button>
+            </div>
+        </div>
+        
+        <div class="modal-btns" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+            <button class="modal-btn" style="background: #e74c3c; color: white;" onclick="clearManualTime()">清空時間</button>
+            <button class="modal-btn btn-cancel" onclick="closeTimeModal()">關閉</button>
+            <button class="modal-btn btn-save" onclick="saveManualTime()">儲存</button>
+        </div>
+    </div>
+</div>
+
+<div id="staffParamsModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 450px; background: #fff; border-radius: 12px; padding: 20px;">
+        <div class="modal-title" style="font-size: 18px; color: #2c3e50; font-weight: bold;">個別薪資/成本參數設定</div>
+        <div id="staffParamsTitle" style="text-align:center; color:#3498db; margin-bottom:15px; font-weight:bold; font-size: 16px;"></div>
+        
+        <div class="toggle-wrapper" style="background: #f8f9fa; border-radius: 8px; padding: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
+            <label class="switch" style="margin-right: 10px;"><input type="checkbox" id="useCustomParamsToggle"><span class="slider"></span></label>
+            <span style="font-size:15px; color: #333;">啟用獨立參數</span>
+        </div>
+
+        <div id="paramsInputs" style="opacity: 0.5; pointer-events: none; transition: opacity 0.3s; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; font-size: 13px; color: #95a5a6; padding-bottom: 8px; border-bottom: 1px solid #eee; text-align: center; font-weight: bold; margin-bottom: 5px; gap: 5px;">
+                <div style="width: 20%;">項目(分/次)</div><div style="width: 25%;">底薪(小姐拿)</div><div style="width: 25%;">底價(扣成本)</div><div style="width: 15%; color: #d35400;">工數</div><div style="width: 15%;">操作</div>
+            </div>
+            <div id="dynamicParamsList" style="display: flex; flex-direction: column; max-height: 40vh; overflow-y: auto; overflow-x: hidden;"></div>
+            <div style="text-align: center; margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                <button onclick="addNewParamRow()" style="background: transparent; border: none; color: #85c1e9; font-size: 18px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                    <span style="font-size: 24px; color: #c39bd3;">+</span> 新增特殊項目 (例如 50/2)
+                </button>
+            </div>
+        </div>
+
+        <div class="modal-btns" style="margin-top: 20px; display: flex; gap: 10px;">
+            <button class="modal-btn btn-cancel" style="background: #95a5a6; color: white; padding: 12px; border-radius: 6px; flex: 1; border: none; font-size: 16px; font-weight: bold;" onclick="closeParamsModal()">取消</button>
+            <button class="modal-btn btn-save" style="background: #2ecc71; color: white; padding: 12px; border-radius: 6px; flex: 1; border: none; font-size: 16px; font-weight: bold;" onclick="saveStaffParams()">儲存設定</button>
+        </div>
+    </div>
+</div>
+
+<div id="roomConfigModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-title" style="margin-bottom: 10px;">⚙️ 設定固定房間位置</div>
+        <div style="display:flex; gap:10px; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px dashed #ccc;">
+            <input type="text" id="newRegionInput" placeholder="輸入新區域 (例: 高雄店)" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc; font-size:14px;">
+            <button class="action-btn" style="background:#27ae60; white-space: nowrap;" onclick="addNewRegion()">+ 新增區域</button>
+        </div>
+        <div style="display:flex; gap:10px; margin-bottom: 15px;">
+            <select id="roomConfigRegionSelect" onchange="renderRoomConfigUI()" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc; font-size:14px;"></select>
+            <button class="action-btn" style="background:#e74c3c; white-space: nowrap;" onclick="deleteCurrentRegion()">🗑️ 刪除此區</button>
+        </div>
+        <div id="roomConfigList" style="display:flex; flex-direction:column; gap:8px; max-height: 250px; overflow-y: auto; margin-bottom: 15px; padding: 5px; border: 1px solid #eee; border-radius: 6px; min-height: 100px;"></div>
+        <div style="display:flex; gap:10px; margin-bottom: 15px;">
+            <input type="text" id="newRoomInput" placeholder="輸入新房間名稱 (例: E房)" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ccc;">
+            <button class="action-btn" style="background:#3498db;" onclick="addNewRoomToConfig()">+ 新增房間</button>
+        </div>
+        <div class="modal-btns">
+            <button class="modal-btn btn-cancel" onclick="closeRoomConfigModal()">關閉</button>
+            <button class="modal-btn btn-save" onclick="applyRoomTemplate()">套用房間到排班</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast">✅ 已複製到剪貼簿！</div>
+
+<script src="shop/shop_data/config.js"></script>
+<script src="shop/shop_data/utils.js"></script>
+<script src="shop/shop_data/schedule.js"></script>
+<script src="shop/shop_data/settlement.js"></script>
+<script src="shop/shop_data/app.js"></script>
+<script src="shop/shop_data/weekly.js"></script>
+
+</body>
+</html>

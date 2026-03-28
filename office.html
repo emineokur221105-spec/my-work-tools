@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>團隊分紅系統 (V8 深色質感版)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* === 深色模式全域設定 === */
+    body { 
+      font-family: 'Inter', 'Noto Sans TC', sans-serif; 
+      background-color: #0f172a; /* 深空灰背景 */
+      color: #e2e8f0; /* 淺灰文字 */
+    }
+    .font-mono { font-family: 'Roboto Mono', monospace; }
+
+    /* === 輸入框 (深色版) === */
+    .input-box {
+      width: 100%; 
+      background-color: #1e293b; /* 鐵灰底 */
+      border: 1px solid #334155; /* 深框 */
+      border-radius: 6px;
+      padding: 8px 8px;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+      color: #f8fafc; /* 白字 */
+    }
+    .input-box:hover {
+      background-color: #334155;
+    }
+    .input-box:focus { 
+      background-color: #0f172a; 
+      border-color: #3b82f6; 
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+      outline: none;
+    }
+    .input-box::placeholder { color: #64748b; }
+
+    /* 金額欄位 (強調) */
+    .amount-input {
+      text-align: right;
+      font-weight: 700;
+      font-family: 'Roboto Mono', monospace;
+      color: #38bdf8; /* 亮藍色數字 */
+      background-color: #0f172a; 
+    }
+    
+    /* === 卡片樣式 (深色懸浮) === */
+    .expense-row {
+      display: grid;
+      align-items: center;
+      background: #1e293b; /* 鐵灰卡片 */
+      margin-bottom: 8px;
+      border-radius: 8px;
+      padding: 12px 10px;
+      border: 1px solid #334155;
+      border-left-width: 4px;
+      transition: all 0.2s;
+    }
+    .expense-row:hover {
+      transform: translateY(-1px);
+      background-color: #263345;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* 🎨 顏色主題 (螢光感) */
+    /* 團隊支出 - 亮橘 */
+    .row-team { border-left-color: #f97316; } 
+    .tag-team { background-color: #431407; color: #fdba74; border: 1px solid #7c2d12; }
+    
+    /* 公司代墊 - 亮靛藍 */
+    .row-company { border-left-color: #818cf8; }
+    .tag-company { background-color: #1e1b4b; color: #a5b4fc; border: 1px solid #3730a3; }
+
+    /* 下拉選單 */
+    select.pill-select {
+      appearance: none; text-align: center; cursor: pointer;
+      font-size: 0.8rem; font-weight: 600;
+      border-radius: 9999px; padding: 4px 8px; width: 100%;
+    }
+
+    /* 按鈕與小元件 */
+    .btn-move { color: #475569; padding: 4px; border-radius: 4px; transition: 0.2s; }
+    .btn-move:hover { color: #94a3b8; background-color: #334155; }
+    
+    .status-dot { height: 6px; width: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .status-online { background-color: #34d399; box-shadow: 0 0 8px #34d399; } /* 螢光綠 */
+    .status-syncing { background-color: #fbbf24; animation: pulse 1s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+    /* 明細列表 */
+    .detail-item {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 0; border-bottom: 1px dashed #334155; font-size: 0.85rem; color: #94a3b8;
+    }
+    .detail-item:last-child { border-bottom: none; }
+    
+    /* 主卡片容器修正 */
+    #report-card {
+        background-color: #1e293b;
+        border-color: #334155;
+    }
+  </style>
+</head>
+
+<body class="py-8 px-4 max-w-7xl mx-auto">
+
+  <div class="mb-8 flex flex-col md:flex-row justify-between items-center gap-4 no-export">
+    <div class="flex items-center text-xs text-slate-400 font-mono bg-slate-800 px-3 py-1.5 rounded-full shadow-sm border border-slate-700">
+      <span id="sync-status-dot" class="status-dot status-syncing"></span>
+      <span id="sync-status-text">Connecting...</span>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="window.resetCloudData()" class="text-sm text-slate-500 hover:text-red-400 transition px-3 py-2 font-bold">
+        🗑️ 重置
+      </button>
+      <button onclick="window.downloadReport()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg shadow-lg shadow-blue-900/50 flex items-center gap-2 font-bold transition active:scale-95 text-sm border border-blue-500">
+        <span id="btn-text">📸 下載報表</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="report-card" class="rounded-2xl shadow-2xl overflow-hidden relative border border-slate-700">
+
+    <div class="bg-slate-950 p-8 border-b border-slate-800">
+      <div class="flex flex-col md:flex-row justify-between items-start gap-8">
+        <div>
+          <h1 class="text-3xl font-bold tracking-tight mb-2 text-white">團隊分紅結算</h1>
+          <div class="flex items-center gap-2">
+             <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-900 text-blue-200 uppercase tracking-widest border border-blue-800">Finance Pro</span>
+             <input type="text" id="date-range" class="bg-transparent text-slate-500 text-xs font-mono w-48 focus:text-blue-400 transition-colors border-none outline-none p-0" placeholder="點擊輸入日期..." onchange="window.saveData()">
+          </div>
+        </div>
+        
+        <div class="w-full md:w-auto text-right">
+            <div class="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-wider">總收入 (Total Revenue)</div>
+            <div class="flex items-center justify-end relative">
+                <span class="text-2xl text-emerald-500 mr-2 font-bold absolute -left-6">$</span>
+                <input type="number" inputmode="decimal" id="income" 
+                       class="text-5xl font-mono font-bold text-white w-48 text-right bg-transparent border-b border-slate-800 focus:border-emerald-500 focus:outline-none transition-colors placeholder-slate-700" 
+                       placeholder="0" oninput="window.calculate()">
+            </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="p-8 bg-slate-900 border-b border-slate-800">
+        <div class="flex justify-between items-end mb-4">
+            <h3 class="font-bold text-slate-200 text-lg flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_10px_#3b82f6]"></span> 支出明細
+            </h3>
+            <div class="text-right">
+                <p class="text-[10px] text-slate-500 uppercase font-bold">團隊總支出</p>
+                <p class="font-mono text-xl font-bold text-rose-500" id="total-team-expenses">0</p>
+            </div>
+        </div>
+
+        <div class="hidden md:grid grid-cols-12 gap-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 px-2">
+            <div class="col-span-1 text-center">排序</div>
+            <div class="col-span-2 text-center">類別</div>
+            <div class="col-span-4">項目</div>
+            <div class="col-span-2 text-center">付款人</div>
+            <div class="col-span-2 text-right">金額</div>
+            <div class="col-span-1"></div>
+        </div>
+
+        <div id="expense-list" class="space-y-2">
+            </div>
+
+        <button onclick="window.addExpense()" class="mt-4 w-full py-3 border border-dashed border-slate-700 text-slate-500 rounded-lg hover:border-slate-500 hover:text-slate-300 font-bold text-sm transition no-export flex justify-center items-center gap-2 hover:bg-slate-800">
+            <span>+</span> 新增一筆支出
+        </button>
+    </div>
+
+    <div class="p-8 bg-slate-900">
+      
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-8 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+         <div class="flex items-center gap-2 text-sm text-slate-400 font-mono flex-wrap">
+            <span class="bg-slate-700 px-2 py-1 rounded text-slate-300 font-bold text-xs">公式</span>
+            <span>總收</span> <span class="text-emerald-400 font-bold" id="formula-income">0</span>
+            <span class="text-slate-600">-</span>
+            <span>支出</span> <span class="text-rose-400 font-bold" id="formula-exp">0</span>
+            <span class="text-slate-600">=</span>
+            <span class="text-white font-bold">淨利 $</span><span id="formula-net" class="text-white font-bold text-lg">0</span>
+         </div>
+         <div id="percent-status" class="text-[10px] font-bold px-3 py-1 rounded-full bg-slate-950 text-slate-500 border border-slate-700">
+             檢查佔比...
+         </div>
+      </div>
+
+      <div id="shareholder-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        </div>
+
+      <div class="mt-8 text-center no-export">
+          <button onclick="window.addShareholder()" class="text-xs bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 px-4 py-2 rounded-full font-bold transition shadow-sm">
+             + 新增股東
+          </button>
+      </div>
+    </div>
+
+    <div class="bg-slate-950 px-8 py-4 border-t border-slate-800 flex justify-between items-center text-[10px] text-slate-600 uppercase">
+      <span>Confidential Report (Dark Mode)</span>
+      <span>Generated: <span id="print-date"></span></span>
+    </div>
+  </div>
+  <div class="h-24"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDsUsWuynci0DP71veuu19Ht8bJmhHSkHs",
+      authDomain: "worktools-f53e5.firebaseapp.com",
+      databaseURL: "https://worktools-f53e5-default-rtdb.firebaseio.com",
+      projectId: "worktools-f53e5",
+      storageBucket: "worktools-f53e5.firebasestorage.app",
+      messagingSenderId: "950551082090",
+      appId: "1:950551082090:web:3c2c4962b5ffa044aec613",
+      measurementId: "G-EKPY3SC0BR"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const dbRef = ref(db, 'office_settlement_v8_dark');
+
+    let shareholders = [];
+    let expenses = [];
+    let income = 0;
+    let isLocalUpdate = false;
+    let saveTimeout = null;
+
+    const defaultData = {
+      shareholders: [
+          { name: 'OG', percent: 67 },
+          { name: 'C', percent: 28 },
+          { name: '黑', percent: 5 }
+      ],
+      expenses: [
+        { type: 'team', name: '做圖軟體月費', amount: 450, paidBy: 'OG' }, 
+        { type: 'company', name: '公司房租代墊', amount: 26233, paidBy: 'OG' },
+        { type: 'team', name: '團隊聚餐', amount: 1200, paidBy: 'C' }
+      ],
+      income: 0,
+      dateRange: ''
+    };
+
+    onValue(dbRef, (snapshot) => {
+      if (isLocalUpdate) {
+          isLocalUpdate = false; 
+          updateStatus('online');
+          return;
+      }
+      updateStatus('syncing');
+      const data = snapshot.val();
+      if (data) {
+        shareholders = data.shareholders || [];
+        expenses = data.expenses || [];
+        income = data.income || 0;
+        document.getElementById('date-range').value = data.dateRange || '';
+      } else {
+        shareholders = defaultData.shareholders;
+        expenses = defaultData.expenses;
+        income = defaultData.income;
+        saveDataToCloud();
+      }
+      document.getElementById('income').value = income;
+      renderAll();
+      updateStatus('online');
+      document.getElementById('print-date').innerText = new Date().toLocaleDateString();
+    });
+
+    window.calculate = function() {
+      let incInput = document.getElementById('income').value;
+      income = parseFloat(incInput) || 0;
+
+      let totalTeamExpense = 0;
+      expenses.forEach(exp => {
+          if (exp.type === 'team') {
+              totalTeamExpense += (parseFloat(exp.amount) || 0);
+          }
+      });
+
+      let netProfit = income - totalTeamExpense;
+
+      document.getElementById('total-team-expenses').innerText = totalTeamExpense.toLocaleString();
+      document.getElementById('formula-income').innerText = income.toLocaleString();
+      document.getElementById('formula-exp').innerText = totalTeamExpense.toLocaleString();
+      document.getElementById('formula-net').innerText = netProfit.toLocaleString();
+
+      renderShareholderCards(netProfit);
+      checkPercent();
+    }
+
+    function renderExpenses() {
+      const list = document.getElementById('expense-list');
+      const payerOptions = (currentPayer) => {
+          let opts = `<option value="">選擇付款人</option>`;
+          shareholders.forEach(sh => {
+              opts += `<option value="${sh.name}" ${currentPayer === sh.name ? 'selected' : ''}>${sh.name}</option>`;
+          });
+          opts += `<option value="公款/其他" ${currentPayer === '公款/其他' ? 'selected' : ''}>公款/其他</option>`;
+          return opts;
+      };
+
+      list.innerHTML = expenses.map((exp, i) => {
+        const isTeam = exp.type === 'team';
+        const rowClass = isTeam ? 'row-team' : 'row-company';
+        const tagClass = isTeam ? 'tag-team' : 'tag-company';
+        
+        return `
+            <div class="expense-row ${rowClass} grid grid-cols-1 md:grid-cols-12 gap-3 group">
+                <div class="col-span-1 flex justify-center gap-1 no-export opacity-30 group-hover:opacity-100 transition">
+                    <button onclick="window.moveExp(${i}, -1)" class="btn-move" title="上移">▲</button>
+                    <button onclick="window.moveExp(${i}, 1)" class="btn-move" title="下移">▼</button>
+                </div>
+                <div class="col-span-1 md:col-span-2">
+                    <select onchange="window.updateExp(${i}, 'type', this.value)" 
+                            class="pill-select ${tagClass}">
+                        <option value="team" ${isTeam ? 'selected' : ''}>🔴 團隊支出</option>
+                        <option value="company" ${!isTeam ? 'selected' : ''}>🔵 公司代墊</option>
+                    </select>
+                </div>
+                <div class="col-span-1 md:col-span-4">
+                    <input type="text" value="${exp.name}" onchange="window.updateExp(${i}, 'name', this.value)" 
+                           class="input-box" placeholder="輸入項目名稱...">
+                </div>
+                <div class="col-span-1 md:col-span-2">
+                    <select onchange="window.updateExp(${i}, 'paidBy', this.value)" 
+                            class="input-box text-sm text-slate-400">
+                        ${payerOptions(exp.paidBy)}
+                    </select>
+                </div>
+                <div class="col-span-1 md:col-span-2 flex items-center relative">
+                    <span class="text-slate-500 absolute left-2 pointer-events-none text-xs">$</span>
+                    <input type="number" inputmode="decimal" value="${exp.amount}" onkeyup="window.updateExp(${i}, 'amount', this.value)" 
+                           class="input-box amount-input" placeholder="0">
+                </div>
+                <div class="col-span-1 text-center no-export">
+                    <button onclick="window.removeExp(${i})" class="text-slate-600 hover:text-red-400 transition p-2">×</button>
+                </div>
+            </div>
+        `
+      }).join('');
+    }
+
+    function renderShareholderCards(netProfit) {
+        const container = document.getElementById('shareholder-cards');
+        
+        container.innerHTML = shareholders.map((sh, idx) => {
+            let dividend = Math.floor(netProfit * (sh.percent / 100));
+            const teamPaidItems = expenses.filter(e => e.paidBy === sh.name && e.type === 'team');
+            const companyPaidItems = expenses.filter(e => e.paidBy === sh.name && e.type === 'company');
+            const teamPaidTotal = teamPaidItems.reduce((sum, e) => sum + (parseFloat(e.amount)||0), 0);
+            const companyPaidTotal = companyPaidItems.reduce((sum, e) => sum + (parseFloat(e.amount)||0), 0);
+
+            const renderList = (items, colorClass) => {
+                if(items.length === 0) return `<div class="text-xs text-slate-600 py-2 text-center">無項目</div>`;
+                return items.map(item => `
+                    <div class="detail-item">
+                        <span class="truncate mr-2 text-slate-400">${item.name}</span>
+                        <span class="font-mono font-bold ${colorClass}">$${parseInt(item.amount).toLocaleString()}</span>
+                    </div>
+                `).join('');
+            };
+
+            const grandTotal = dividend + teamPaidTotal + companyPaidTotal;
+
+            return `
+            <div class="bg-slate-800 rounded-xl shadow-lg border border-slate-700 flex flex-col relative group hover:border-slate-600 transition">
+                <button onclick="window.removeSh(${idx})" class="absolute top-2 right-2 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition no-export">🗑️</button>
+
+                <div class="p-5 border-b border-slate-700 bg-gradient-to-br from-slate-800 to-slate-900 rounded-t-xl">
+                    <div class="flex items-center gap-3 mb-2">
+                        <input type="text" value="${sh.name}" onchange="window.updateSh(${idx}, 'name', this.value)" 
+                               class="font-bold text-xl text-white bg-transparent w-full focus:text-blue-400 outline-none">
+                        <div class="flex items-center bg-slate-900 px-2 py-1 rounded-full border border-slate-700">
+                            <input type="number" value="${sh.percent}" onkeyup="window.updateSh(${idx}, 'percent', this.value)" 
+                                   class="w-6 text-center font-mono text-xs outline-none text-slate-400 bg-transparent">
+                            <span class="text-[10px] text-slate-500">%</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-end">
+                        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">分紅 (Dividend)</span>
+                        <span class="font-mono text-xl font-bold text-slate-300">$${dividend.toLocaleString()}</span>
+                    </div>
+                </div>
+
+                <div class="p-5 space-y-5 flex-1">
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-bold text-orange-400 bg-orange-950/30 border border-orange-900/50 px-2 py-0.5 rounded-full">團隊墊付</span>
+                            <span class="text-xs font-mono font-bold text-orange-400">$${teamPaidTotal.toLocaleString()}</span>
+                        </div>
+                        <div class="pl-1">
+                            ${renderList(teamPaidItems, 'text-orange-400')}
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-bold text-indigo-400 bg-indigo-950/30 border border-indigo-900/50 px-2 py-0.5 rounded-full">公司代墊</span>
+                            <span class="text-xs font-mono font-bold text-indigo-400">$${companyPaidTotal.toLocaleString()}</span>
+                        </div>
+                        <div class="pl-1">
+                            ${renderList(companyPaidItems, 'text-indigo-400')}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-slate-950 rounded-b-xl flex justify-between items-center mt-auto border-t border-slate-800">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">實領總額</span>
+                    <span class="font-mono text-xl font-bold text-yellow-400">$${grandTotal.toLocaleString()}</span>
+                </div>
+            </div>
+            `;
+        }).join('');
+    }
+
+    function checkPercent() {
+        let total = shareholders.reduce((sum, s) => sum + (parseFloat(s.percent)||0), 0);
+        const statusEl = document.getElementById('percent-status');
+        if (Math.abs(total - 100) < 0.01) {
+            statusEl.innerText = "✓ 持股 100%";
+            statusEl.className = "text-[10px] font-bold px-3 py-1 rounded-full bg-emerald-900/50 text-emerald-400 border border-emerald-800";
+        } else {
+            statusEl.innerText = `⚠️ 目前 ${total}%`;
+            statusEl.className = "text-[10px] font-bold px-3 py-1 rounded-full bg-rose-900/50 text-rose-400 border border-rose-800";
+        }
+    }
+
+    window.moveExp = (index, direction) => {
+        if (direction === -1 && index === 0) return;
+        if (direction === 1 && index === expenses.length - 1) return;
+        const targetIndex = index + direction;
+        [expenses[index], expenses[targetIndex]] = [expenses[targetIndex], expenses[index]];
+        renderExpenses();
+        window.saveData();
+    };
+
+    window.renderAll = function() { renderExpenses(); window.calculate(); }
+    window.updateExp = (i, k, v) => { expenses[i][k] = v; if(k === 'type' || k === 'paidBy') renderExpenses(); window.calculate(); window.saveData(); };
+    window.addExpense = () => { expenses.push({ type: 'team', name: '', amount: '', paidBy: '' }); renderExpenses(); window.saveData(); };
+    window.removeExp = (i) => { expenses.splice(i, 1); renderExpenses(); window.calculate(); window.saveData(); };
+    window.updateSh = (i, k, v) => { shareholders[i][k] = k === 'percent' ? parseFloat(v) || 0 : v; if(k === 'name') renderExpenses(); window.calculate(); window.saveData(); };
+    window.addShareholder = () => { shareholders.push({ name: 'New', percent: 0 }); window.renderAll(); window.saveData(); };
+    window.removeSh = (i) => { if(confirm('刪除?')) { shareholders.splice(i, 1); window.renderAll(); window.saveData(); } };
+    
+    window.saveData = function() {
+      updateStatus('syncing');
+      if (saveTimeout) clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(saveDataToCloud, 500);
+    }
+    function saveDataToCloud() {
+      isLocalUpdate = true;
+      const dataToSave = {
+        income: income,
+        dateRange: document.getElementById('date-range').value,
+        expenses: expenses,
+        shareholders: shareholders,
+        lastUpdated: new Date().toISOString()
+      };
+      set(dbRef, dataToSave).then(() => { updateStatus('online') });
+    }
+
+    function updateStatus(state) {
+      const dot = document.getElementById('sync-status-dot');
+      const text = document.getElementById('sync-status-text');
+      if (state === 'online') {
+        dot.className = "status-dot status-online"; text.innerText = "已同步"; text.className = "text-emerald-500 font-bold";
+      } else {
+        dot.className = "status-dot status-syncing"; text.innerText = "同步中..."; text.className = "text-amber-400 font-bold";
+      }
+    }
+    window.resetCloudData = function() {
+      if (confirm('確定重置？')) {
+        shareholders = defaultData.shareholders; expenses = defaultData.expenses; income = 0;
+        saveDataToCloud(); window.renderAll();
+      }
+    }
+    window.downloadReport = function() {
+      const btnText = document.getElementById('btn-text');
+      btnText.innerText = "處理中...";
+      const node = document.getElementById('report-card');
+      
+      // 截圖設定：確保背景顏色正確
+      html2canvas(node, { 
+        scale: 2, 
+        backgroundColor: "#0f172a", // 強制設定背景為深色
+        useCORS: true 
+      }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `財務報表(黑)_${new Date().toISOString().slice(0,10)}.jpg`;
+        link.href = canvas.toDataURL("image/jpeg", 0.95);
+        link.click();
+        btnText.innerText = "📸 下載報表";
+      });
+    }
+  </script>
+</body>
+</html>

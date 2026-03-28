@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>📊 每週業績與入帳管理</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a252f">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2641/2641409.png">
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <style>
+        /* --- 基礎樣式 --- */
+        :root { --safe-top: env(safe-area-inset-top); --primary: #3498db; --dark: #1a252f; --bg: #f4f7f6; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; background-color: var(--bg); margin: 0; padding: 0; padding-top: var(--safe-top); padding-bottom: 60px; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        h1, h2, h3 { color: #2c3e50; text-align: center; margin: 10px 0; }
+
+        /* --- 頂部導航列 --- */
+        .nav-bar { height: 50px; background: var(--dark); display: flex; align-items: center; justify-content: space-between; padding: 0 15px; position: sticky; top: 0; z-index: 200; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .app-title { color: white; font-weight: bold; font-size: 15px; display: flex; align-items: center; gap: 10px; }
+        .btn-home { background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.3); color: #fff; padding: 6px 12px; font-size: 13px; border-radius: 6px; font-weight: bold; text-decoration: none; transition: 0.2s; }
+        .btn-home:active { background: rgba(255, 255, 255, 0.3); }
+        .mode-badge { padding: 4px 8px; border-radius: 15px; font-size: 12px; font-weight: bold; white-space: nowrap; }
+        .mode-connecting { background-color: #f39c12; color: #fff; }
+        .mode-connected { background-color: #2ecc71; color: #fff; }
+
+        /* --- 核心容器 --- */
+        .main-container { padding: 15px; max-width: 1200px; margin: 0 auto; }
+
+        /* --- 週次與輸入區塊 --- */
+        .card-section { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .week-input-group { display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; margin-bottom: 10px; }
+        .week-picker { padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; font-weight: bold; color: #2c3e50; text-align: center; background: #fdfdfd; width: 100%; max-width: 250px; }
+        .btn-nav-week { background: #ecf0f1; border: none; font-size: 18px; padding: 8px 15px; border-radius: 8px; cursor: pointer; color: #2c3e50; font-weight: bold; }
+        .week-date-range { font-size: 13px; color: #7f8c8d; font-weight: bold; background: #f0f2f5; padding: 4px 15px; border-radius: 20px; letter-spacing: 0.5px; }
+        
+        textarea, input[type="text"] { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 15px; box-sizing: border-box; line-height: 1.5; background: #fafafa; }
+        textarea:focus, input[type="text"]:focus { border-color: var(--primary); outline: none; background: white; }
+        
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn { border: none; padding: 12px 15px; font-size: 14px; border-radius: 8px; cursor: pointer; font-weight: bold; color: white; display: flex; justify-content: center; align-items: center; gap: 5px; flex: 1; min-width: 100px; }
+        .btn-blue { background-color: #3498db; flex: 2; }
+        .btn-purple { background-color: #8e44ad; }
+        .btn-red { background-color: #e74c3c; }
+        .btn-teal { background-color: #16a085; width: 100%; }
+
+        /* --- 🌟 查帳專用總表 --- */
+        .table-view-container { overflow-x: auto; border-radius: 8px; border: 1px solid #e0e0e0; }
+        .table-view { width: 100%; border-collapse: collapse; font-size: 15px; text-align: center; background: white; }
+        .table-view th { background-color: #f1f1f1; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd; padding: 12px 8px; font-weight: bold; color: #333; white-space: nowrap; }
+        .table-view td { border-bottom: 1px solid #eee; border-right: 1px solid #eee; padding: 12px 8px; vertical-align: middle; }
+        .table-view tr { transition: background-color 0.2s, opacity 0.3s; }
+        .table-view tr:hover { background-color: #f9f9f9; }
+        .table-view .amt { color: #c0392b; font-weight: bold; font-size: 16px; }
+        .table-view .acc { font-family: monospace; color: #2980b9; font-weight: bold; font-size: 14px; }
+        .table-view .missing { color: #e74c3c; font-size: 13px; font-weight: bold; }
+        .table-view tr.is-paid { opacity: 0.5; background-color: #fdfdfd; }
+        .table-view tr.is-paid:hover { opacity: 0.8; }
+
+        /* --- 報表與卡片 (緊湊排版) --- */
+        .report-header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-top: 10px; border-top: 2px dashed #eee; }
+        .btn-expand-all { background: #ecf0f1; border: 1px solid #bdc3c7; color: #2c3e50; padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 13px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .report-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; align-items: start; }
+        
+        .person-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid #eee; position: relative; transition: all 0.3s ease; }
+        .card-body { padding: 12px; }
+
+        /* 💡 狀態顏色判定 (扁平化，無漸層) */
+        .card-header { padding: 12px 15px; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center; color: white; }
+        .header-pending { background-color: #f39c12; } 
+        .header-missing { background-color: #e74c3c; } 
+        .header-paid    { background-color: #95a5a6; } /* 已入帳變灰色，降低存在感 */
+
+        .person-card.is-paid { opacity: 0.65; background: #fdfdfd; border-color: #bdc3c7; }
+        .person-card.is-paid:hover { opacity: 1; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .person-card.missing-account { border-color: #e74c3c; box-shadow: 0 0 10px rgba(231, 76, 60, 0.2); }
+        
+        /* 點擊姓名複製特效 */
+        .clickable-name { cursor: pointer; border-bottom: 1px dashed rgba(255,255,255,0.6); padding-bottom: 1px; transition: 0.2s; }
+        .clickable-name:hover { opacity: 0.8; }
+        .clickable-name:active { transform: scale(0.95); }
+
+        /* 每日合計總表 */
+        .summary-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+        .summary-table th { background: #f8f9fa; padding: 10px; border: 1px solid #eee; color: #2c3e50; }
+        .summary-table td { padding: 10px; border: 1px solid #eee; text-align: center; color: #34495e; }
+        .summary-total-row td { background: #fdf2e9; font-weight: bold; color: #c0392b; font-size: 16px; }
+
+        /* 明細與表格 */
+        .detail-toggle-btn { text-align: center; color: #3498db; font-size: 12px; cursor: pointer; margin-bottom: 10px; font-weight: bold; background: #f4f6f9; padding: 8px; border-radius: 6px; border: 1px dashed #bdc3c7; transition: 0.2s; }
+        table.detail-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
+        table.detail-table th, table.detail-table td { border: 1px solid #eee; padding: 6px 4px; text-align: center; }
+        table.detail-table .col-day { background-color: #fdf2e9; width: 35px; font-weight: bold; color: #d35400; }
+        table.detail-table .col-data { background-color: #fafafa; text-align: left; padding-left: 8px; color: #2c3e50; }
+        table.detail-table .col-subtotal { background-color: #ebf5fb; width: 45px; font-weight: bold; color: #2980b9; }
+
+        /* 帳戶與複製按鈕 (扁平化設計) */
+        .account-display { padding: 10px; background: #fdfdfd; border-radius: 8px; font-size: 13px; color: #34495e; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; margin-bottom: 10px;}
+        .missing-account-box { border: 1px dashed #e74c3c; background: #fffcfc; }
+        .missing-msg { color: #e74c3c; font-weight: bold; margin: 0; }
+        
+        .btn-copy-card { background: #7854d6; color: white; border: none; width: 100%; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; transition: 0.2s; margin-bottom: 5px; }
+        .btn-copy-card:active { transform: scale(0.97); background: #6042ab; }
+        
+        /* 編輯儲存區 (依照截圖還原) */
+        .edit-area { background: #f4f6f9; padding: 12px; border-radius: 8px; margin-top: 5px; border: 1px dashed #bdc3c7; display: none; margin-bottom: 10px; }
+        .edit-area input { margin-bottom: 8px; font-size: 14px; padding: 8px 10px; width: 100%; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        .btn-save-sync { width: 100%; background: #16a085; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; transition: 0.2s; }
+        .btn-save-sync:active { background: #13876f; }
+        .btn-icon { background: none; border: none; color: #e74c3c; cursor: pointer; padding: 0 5px; font-size: 16px; }
+
+        /* 入帳狀態 Toggle 開關 */
+        .payment-status-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #fdfdfd; border-top: 1px solid #eee; }
+        .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; color: white; background: #95a5a6; transition: 0.3s; }
+        .status-badge.paid { background: #27ae60; }
+        
+        .switch { position: relative; display: inline-block; width: 42px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #27ae60; }
+        input:checked + .slider:before { transform: translateX(18px); }
+
+        /* --- 銀行帳戶管理區塊 --- */
+        .acc-table-container { max-height: 300px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; background: white; }
+        .acc-list-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .acc-list-table th { background: #f8f9fa; position: sticky; top: 0; padding: 10px; text-align: left; }
+        .acc-list-table td { padding: 10px; border-bottom: 1px solid #eee; }
+        .btn-sm-action { border: none; padding: 4px 8px; border-radius: 4px; color: white; font-size: 12px; cursor: pointer; margin-right: 4px; }
+        .btn-edit { background: #f39c12; }
+        .btn-del { background: #e74c3c; }
+
+        /* --- Modal 彈出視窗 --- */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: none; justify-content: center; align-items: center; }
+        .modal-content { background: white; width: 90%; max-width: 400px; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+
+        /* --- Toast 通知 --- */
+        #toast { visibility: hidden; min-width: 200px; background-color: rgba(44, 62, 80, 0.9); color: #fff; text-align: center; border-radius: 30px; padding: 12px 20px; position: fixed; z-index: 1001; left: 50%; bottom: 30px; transform: translateX(-50%); font-size: 15px; font-weight: bold; opacity: 0; transition: 0.3s; }
+        #toast.show { visibility: visible; opacity: 1; bottom: 50px; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <div class="app-title">
+            <a href="index.html" class="btn-home">🏠 首頁</a>
+            📊 業績與入帳管理
+        </div>
+        <span id="systemModeBadge" class="mode-badge mode-connecting">連線中...</span>
+    </nav>
+
+    <div class="main-container">
+
+        <div class="card-section" style="border-top: 4px solid #3498db;">
+            <div style="font-weight: bold; color: #2980b9; font-size: 14px; text-align: center; margin-bottom: 10px;">📅 選擇紀錄週次</div>
+            <div class="week-input-group">
+                <button class="btn-nav-week" onclick="changeWeek(-1)">◀</button>
+                <input type="week" id="weekSelector" class="week-picker" onchange="handleWeekChange()">
+                <button class="btn-nav-week" onclick="changeWeek(1)">▶</button>
+            </div>
+            <div id="weekRangeDisplay" class="week-date-range" style="text-align:center; width:fit-content; margin:0 auto 10px auto;">--/-- (一) ~ --/-- (日)</div>
+            
+            <h3 style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">📝 貼上本週業績</h3>
+            <textarea id="inputData" rows="5" placeholder="請貼上業績文字..."></textarea>
+            
+            <div class="btn-group">
+                <button class="btn btn-blue" id="calculateButton">🔄 重新整理計算</button>
+                <button class="btn btn-purple" id="copyExcelDataBtn">📋 複製 Excel 總表</button>
+                <button class="btn btn-red" id="clearButton" style="flex:0.5;">清空</button>
+            </div>
+        </div>
+
+        <div id="tableViewSection" class="card-section" style="display:none; border-top: 4px solid #27ae60;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 style="margin:0; color:#2c3e50;">📋 查帳總表 (點擊右側打勾)</h3>
+            </div>
+            <div class="table-view-container">
+                <table class="table-view">
+                    <thead>
+                        <tr>
+                            <th width="10%">狀態</th>
+                            <th width="18%">名稱</th>
+                            <th width="15%">總金額</th>
+                            <th width="22%">銀行</th>
+                            <th width="30%">帳號</th>
+                            <th width="5%"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableViewBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="summarySection" class="card-section" style="display:none; border-top: 4px solid #e67e22; max-width: 400px; margin: 0 auto 20px auto;">
+            <h3 style="margin-top:0; text-align:center;">📊 每日合計總表</h3>
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th style="width:50%;">星期</th>
+                        <th style="width:50%;">合計</th>
+                    </tr>
+                </thead>
+                <tbody id="summaryBody"></tbody>
+            </table>
+        </div>
+
+        <div class="report-header-bar" id="reportHeader" style="display:none;">
+            <h2 style="margin: 0; text-align: left; font-size: 20px;">👥 個人明細與罐頭訊息</h2>
+            <button class="btn-expand-all" id="globalToggleBtn" onclick="toggleAllDetails()">🔽 展開全部明細</button>
+        </div>
+        
+        <div id="individualReports" class="report-container"></div>
+
+        <div class="card-section" style="border-top: 4px solid #8e44ad; margin-top: 30px;">
+            <h3 style="margin-top:0;">⚙️ 對帳單內容設定</h3>
+            <div>
+                <label style="font-size:13px; font-weight:bold; color:#555;">對帳單日期區間 <span style="color:#3498db; font-size:11px;">(選週次時會自動對齊)</span>：</label>
+                <input type="text" id="billDateRangeInput" placeholder="例如: 3/16-3/22">
+            </div>
+            <div>
+                <label style="font-size:13px; font-weight:bold; color:#555;">警語與注意事項：</label>
+                <textarea id="billWarningTemplate" rows="4">🚨 請務必核對資訊
+* 總金額： 請核實最上方總金額。
+* 預計入款： 週一存入。更改帳號請提前告知
+* 匯錯不補，請仔細確認。</textarea>
+            </div>
+            <button class="btn btn-teal" id="saveBillConfigBtn">💾 儲存設定 (同步所有裝置)</button>
+        </div>
+
+        <div class="card-section" style="margin-top: 20px; border-top: 4px solid #f39c12;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 style="margin:0;">🏦 銀行帳戶管理 (全域)</h3>
+                <button class="btn btn-blue" style="padding:6px 12px; font-size:12px; flex:none; min-width:auto;" onclick="openAccModal()">+ 新增帳戶</button>
+            </div>
+            <input type="text" id="accSearchInput" placeholder="🔍 搜尋名稱或帳號..." style="margin-bottom:10px;" oninput="renderAccountTable()">
+            <div class="acc-table-container">
+                <table class="acc-list-table">
+                    <thead><tr><th width="25%">名稱</th><th width="50%">銀行與帳號</th><th width="25%">操作</th></tr></thead>
+                    <tbody id="accTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="accEditModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 id="accModalTitle" style="margin-top:0;">新增帳戶</h3>
+            <input type="hidden" id="editOriginalName">
+            <label style="font-size:13px; font-weight:bold; color:#555;">名稱</label>
+            <input type="text" id="modalAccName" placeholder="例如: 姚貴">
+            
+            <label style="font-size:13px; font-weight:bold; color:#555;">銀行</label>
+            <select id="modalAccBank" style="width:100%; padding:10px; border-radius:8px; border:1px solid #ccc; margin-bottom:12px;">
+                <option value="🇨🇹 中國信託">🇨🇹 中國信託 (822)</option>
+                <option value="🏦 國泰世華">🏦 國泰世華 (013)</option>
+                <option value="💳 台新銀行">💳 台新銀行 (812)</option>
+                <option value="⛰️ 玉山銀行">⛰️ 玉山銀行 (808)</option>
+                <option value="💳 台北富邦">💳 台北富邦 (012)</option>
+                <option value="📮 中華郵政">📮 中華郵政 (700)</option>
+                <option value="🏛️ 台灣銀行">🏛️ 台灣銀行 (004)</option>
+                <option value="🏛️ 華南銀行">🏛️ 華南銀行 (008)</option>
+                <option value="🏛️ 永豐銀行">🏛️ 永豐銀行 (807)</option>
+                <option value="🏛️ 其他銀行">🏛️ 其他銀行</option>
+            </select>
+            
+            <label style="font-size:13px; font-weight:bold; color:#555;">帳號</label>
+            <input type="text" id="modalAccNum" placeholder="輸入帳號...">
+            
+            <div class="btn-group" style="margin-top:10px;">
+                <button class="btn" style="background:#95a5a6;" onclick="closeAccModal()">取消</button>
+                <button class="btn btn-blue" onclick="window.saveAccountFromModal()">💾 儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast">✅ 操作成功！</div>
+
+    <script>
+        // --- 1. Firebase 初始化 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDsUsWuynci0DP71veuu19Ht8bJmhHSkHs",
+            authDomain: "worktools-f53e5.firebaseapp.com",
+            databaseURL: "https://worktools-f53e5-default-rtdb.firebaseio.com",
+            projectId: "worktools-f53e5",
+            storageBucket: "worktools-f53e5.firebasestorage.app"
+        };
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+
+        // --- 全域變數 ---
+        let localAccounts = []; 
+        let currentWeekId = ""; 
+        let weeklyStatus = {};  
+        let currentSalesRef = null;
+        let currentStatusRef = null;
+        let isAllDetailsExpanded = false;
+        window.excelStringToCopy = "";
+
+        const DAY_MAP = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 0: '日' };
+        const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+        const $ = id => document.getElementById(id);
+
+        function commitAccountData(list) {
+            let text = "💰 帳戶清單 (已整理)\n\n";
+            list.sort((a,b) => a.bankName.localeCompare(b.bankName) || a.name.localeCompare(b.name));
+            list.forEach(i => text += `${i.name} ${i.bankName} ${i.account}\n`);
+            db.ref('weekly_data/accounts').set({ rawText: text, accounts: list });
+        }
+
+        // --- 週次與時間對齊邏輯 ---
+        function getISOWeekString(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+            const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+            return d.getUTCFullYear() + '-W' + (weekNo < 10 ? '0' : '') + weekNo;
+        }
+
+        function getWeekDateRange(weekStr) {
+            if (!weekStr) return "--/-- (一) ~ --/-- (日)";
+            const parts = weekStr.split('-W');
+            if(parts.length !== 2) return "";
+            const year = parseInt(parts[0]); const week = parseInt(parts[1]);
+            const simple = new Date(year, 0, 1 + (week - 1) * 7);
+            const dow = simple.getDay();
+            const ISOweekStart = simple;
+            if (dow <= 4) ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+            else ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+            
+            const start = new Date(ISOweekStart);
+            const end = new Date(ISOweekStart);
+            end.setDate(start.getDate() + 6);
+            
+            const fmt = d => `${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}`;
+            return `${fmt(start)} (一) ~ ${fmt(end)} (日)`;
+        }
+
+        function getSimpleDateRange(weekStr) {
+            if (!weekStr) return "";
+            const parts = weekStr.split('-W');
+            if(parts.length !== 2) return "";
+            const year = parseInt(parts[0]); const week = parseInt(parts[1]);
+            const simple = new Date(year, 0, 1 + (week - 1) * 7);
+            const dow = simple.getDay();
+            const ISOweekStart = simple;
+            if (dow <= 4) ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+            else ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+            
+            const start = new Date(ISOweekStart);
+            const end = new Date(ISOweekStart);
+            end.setDate(start.getDate() + 6);
+            
+            return `${start.getMonth()+1}/${start.getDate()}-${end.getMonth()+1}/${end.getDate()}`;
+        }
+
+        function updateWeekDisplay() {
+            const displayEl = $('weekRangeDisplay');
+            if (displayEl) displayEl.innerText = getWeekDateRange(currentWeekId);
+            
+            const simpleRange = getSimpleDateRange(currentWeekId);
+            const billRangeEl = $('billDateRangeInput');
+            if (billRangeEl && document.activeElement !== billRangeEl) {
+                billRangeEl.value = simpleRange;
+                if(typeof window.saveBillConfig === 'function') window.saveBillConfig(); 
+            }
+        }
+
+        function initWeekSelector() {
+            const today = new Date();
+            if (today.getDay() === 0 || (today.getDay() === 1 && today.getHours() < 12)) today.setDate(today.getDate() - 2);
+            currentWeekId = getISOWeekString(today);
+            $('weekSelector').value = currentWeekId;
+            updateWeekDisplay();
+            loadWeekDataFromFirebase();
+        }
+
+        function handleWeekChange() {
+            if ($('weekSelector').value) { 
+                currentWeekId = $('weekSelector').value; 
+                updateWeekDisplay();
+                loadWeekDataFromFirebase(); 
+            }
+        }
+        function changeWeek(offset) { $('weekSelector').stepUp(offset); handleWeekChange(); }
+
+        // --- Firebase 資料同步 ---
+        function loadWeekDataFromFirebase() {
+            if (currentSalesRef) currentSalesRef.off();
+            if (currentStatusRef) currentStatusRef.off();
+
+            $('inputData').value = "讀取中...";
+            $('individualReports').innerHTML = "";
+            $('summarySection').style.display = 'none';
+            $('tableViewSection').style.display = 'none';
+            
+            currentSalesRef = db.ref(`weekly_data/weeks/${currentWeekId}/sales`);
+            currentSalesRef.on('value', snap => {
+                const val = snap.val() || "";
+                if ($('inputData').value !== val) { $('inputData').value = val; generateReport(); }
+            });
+
+            currentStatusRef = db.ref(`weekly_data/weeks/${currentWeekId}/status`);
+            currentStatusRef.on('value', snap => {
+                weeklyStatus = snap.val() || {};
+                generateReport(); 
+            });
+        }
+
+        function saveSalesData(text) { if(currentWeekId) db.ref(`weekly_data/weeks/${currentWeekId}/sales`).set(text); }
+
+        window.saveBillConfig = function() {
+            db.ref('weekly_data/config').set({ 
+                warning: $('billWarningTemplate').value, 
+                range: $('billDateRangeInput').value 
+            });
+        };
+
+        db.ref('weekly_data/config').on('value', snap => {
+            const val = snap.val() || {};
+            if (val.warning && document.activeElement !== $('billWarningTemplate')) $('billWarningTemplate').value = val.warning;
+            if (val.range && document.activeElement !== $('billDateRangeInput')) $('billDateRangeInput').value = val.range;
+        });
+
+        $('saveBillConfigBtn').onclick = () => {
+            window.saveBillConfig();
+            generateReport(); 
+            showToast("💾 設定已儲存");
+        };
+
+        window.togglePaymentStatus = function(name, isChecked) {
+            if(currentWeekId) db.ref(`weekly_data/weeks/${currentWeekId}/status/${name}`).set(isChecked);
+        };
+
+        window.toggleEdit = function(safeId) {
+            const el = document.getElementById(`edit-area-${safeId}`);
+            if(el) el.style.display = (el.style.display === 'block') ? 'none' : 'block';
+        };
+
+        window.toggleDetails = function(safeId) {
+            const el = document.getElementById(`detail-table-${safeId}`);
+            const btn = document.getElementById(`toggle-btn-${safeId}`);
+            if(el.style.display === 'none') {
+                el.style.display = 'block';
+                btn.innerText = '🔼 收起每日明細';
+            } else {
+                el.style.display = 'none';
+                btn.innerText = '🔽 展開每日明細';
+            }
+        };
+
+        window.toggleAllDetails = function() {
+            isAllDetailsExpanded = !isAllDetailsExpanded;
+            const btn = document.getElementById('globalToggleBtn');
+            btn.innerText = isAllDetailsExpanded ? '🔼 收起全部明細' : '🔽 展開全部明細';
+
+            const tables = document.querySelectorAll('.detail-table-container');
+            const btns = document.querySelectorAll('.detail-toggle-btn');
+            tables.forEach(t => t.style.display = isAllDetailsExpanded ? 'block' : 'none');
+            btns.forEach(b => {
+                b.innerText = isAllDetailsExpanded ? '🔼 收起每日明細' : '🔽 展開每日明細';
+            });
+        };
+
+        const BANK_CODE_MAP = { "822": "🇨🇹 中國信託", "013": "🏦 國泰世華", "812": "💳 台新銀行", "808": "⛰️ 玉山銀行", "012": "💳 台北富邦", "700": "📮 中華郵政", "004": "🏛️ 台灣銀行", "008": "🏛️ 華南銀行", "807": "🏛️ 永豐銀行" };
+        const BANK_KEYWORDS = { "國泰": "🏦 國泰世華", "世華": "🏦 國泰世華", "013": "🏦 國泰世華", "台新": "💳 台新銀行", "812": "💳 台新銀行", "中信": "🇨🇹 中國信託", "中國信託": "🇨🇹 中國信託", "822": "🇨🇹 中國信託", "玉山": "⛰️ 玉山銀行", "808": "⛰️ 玉山銀行", "富邦": "💳 台北富邦", "012": "💳 台北富邦", "郵局": "📮 中華郵政", "700": "📮 中華郵政" };
+        
+        function detectBankName(input) {
+            const raw = input.trim();
+            if (BANK_CODE_MAP[raw]) return BANK_CODE_MAP[raw];
+            for (const k in BANK_KEYWORDS) { if (raw.includes(k)) return BANK_KEYWORDS[k]; }
+            return raw || "🏛️ 其他銀行";
+        }
+
+        // 🌟 修復與更新儲存邏輯 🌟
+        window.saveCardAccount = function(realName, safeId) {
+            const bankInput = document.getElementById(`bank-${safeId}`);
+            const accInput = document.getElementById(`acc-${safeId}`);
+            
+            if(!bankInput || !accInput) return;
+
+            const newBankRaw = bankInput.value.trim();
+            const newAccRaw = accInput.value.trim();
+
+            if (!newAccRaw) { alert("請輸入帳號！"); return; }
+            const detectedBank = detectBankName(newBankRaw);
+            const cleanAcc = newAccRaw.replace(/[^\d]/g, '');
+            const formattedAcc = cleanAcc.length > 6 ? cleanAcc.replace(/(.{4})/g, '$1-').replace(/-$/, '') : newAccRaw;
+
+            localAccounts = localAccounts.filter(a => a.name !== realName);
+            localAccounts.push({ name: realName, bankName: detectedBank, account: formattedAcc });
+
+            commitAccountData(localAccounts);
+            showToast(`✅ 已更新 ${realName} 帳戶！`);
+        };
+
+        function parseAndCalculate(input) {
+            const lines = (input || "").split('\n');
+            const currentYear = new Date().getFullYear();
+            const personData = {};
+            const dailyTotals = {0:0, 1:0, 2:0, 3:0, 4:0, 5:0, 6:0}; 
+            let grandTotal = 0; 
+            let hasData = false;
+
+            lines.forEach(line => {
+                const trim = line.trim();
+                if(!trim) return;
+                const dateMatch = trim.match(/^(\d{4}[-/])?(\d{1,2})[-/](\d{1,2})/);
+                if (!dateMatch) return;
+                
+                const dateObj = new Date(currentYear, parseInt(dateMatch[2])-1, parseInt(dateMatch[3]));
+                if (isNaN(dateObj.getTime())) return;
+                const dayIdx = dateObj.getDay();
+
+                let content = trim.substring(dateMatch[0].length);
+                const tokenRegex = /([^\d\s]+)\s*(-?[\d\.]+)/g;
+                let match;
+                while ((match = tokenRegex.exec(content)) !== null) {
+                    const name = match[1].trim();
+                    const val = parseFloat(match[2]);
+                    if (!isNaN(val)) {
+                        if (!personData[name]) personData[name] = { data: {0:[],1:[],2:[],3:[],4:[],5:[],6:[]}, total: 0 };
+                        personData[name].data[dayIdx].push(val);
+                        personData[name].total += val;
+                        dailyTotals[dayIdx] += val; 
+                        grandTotal += val; 
+                        hasData = true;
+                    }
+                }
+            });
+            return { personData, dailyTotals, grandTotal, hasData };
+        }
+
+        // --- 核心：渲染報表與總表 ---
+        function generateReport() {
+            const input = $('inputData').value;
+            const { personData, dailyTotals, grandTotal, hasData } = parseAndCalculate(input);
+            
+            const reportDiv = $('individualReports');
+            const tableViewBody = $('tableViewBody');
+            
+            reportDiv.innerHTML = '';
+            tableViewBody.innerHTML = '';
+            
+            $('reportHeader').style.display = hasData ? 'flex' : 'none';
+            $('summarySection').style.display = hasData ? 'block' : 'none';
+            $('tableViewSection').style.display = hasData ? 'block' : 'none';
+
+            if (!hasData) return;
+
+            let sumHtml = '';
+            DAY_ORDER.forEach(d => { sumHtml += `<tr><td>${DAY_MAP[d]}</td><td>${dailyTotals[d].toLocaleString()}</td></tr>`; });
+            sumHtml += `<tr class="summary-total-row"><td>總合計</td><td>${grandTotal.toLocaleString()}</td></tr>`;
+            $('summaryBody').innerHTML = sumHtml;
+
+            const billWarning = $('billWarningTemplate').value;
+            const dateRange = $('billDateRangeInput').value;
+
+            const sortedNamesForView = Object.keys(personData).sort((a, b) => {
+                const isPaidA = weeklyStatus[a] === true;
+                const isPaidB = weeklyStatus[b] === true;
+                if (isPaidA !== isPaidB) return isPaidA ? 1 : -1; 
+                
+                const accA = localAccounts.find(x => x && x.name === a);
+                const accB = localAccounts.find(x => x && x.name === b);
+                const bankA = accA ? accA.bankName : "(未設定)";
+                const bankB = accB ? accB.bankName : "(未設定)";
+                if (bankA !== bankB) return bankA.localeCompare(bankB, "zh-Hant");
+                return a.localeCompare(b, "zh-Hant");
+            });
+
+            let tableHtml = '';
+            let excelContent = "名稱\t總金額\t銀行\t帳號\n";
+
+            sortedNamesForView.forEach(name => {
+                const p = personData[name];
+                const acc = localAccounts.find(a => a && a.name === name);
+                const isMissing = !acc;
+                const isPaid = weeklyStatus[name] === true;
+                const safeNameId = name.replace(/\s/g, '_');
+                const finalAmt = Math.round(p.total * 100);
+
+                let bankDisplay = acc ? acc.bankName : '<span class="missing">⚠️ (未設定)</span>';
+                let accDisplay = acc ? acc.account : '';
+                
+                tableHtml += `
+                    <tr class="${isPaid ? 'is-paid' : ''}">
+                        <td>
+                            <label class="switch" style="transform: scale(0.85); margin:0;">
+                                <input type="checkbox" onchange="togglePaymentStatus('${name}', this.checked)" ${isPaid ? 'checked' : ''}>
+                                <span class="slider"></span>
+                            </label>
+                        </td>
+                        <td style="font-weight:bold; color:#2c3e50;">${name}</td>
+                        <td class="amt">${finalAmt.toLocaleString()}</td>
+                        <td style="color:#555;">${bankDisplay}</td>
+                        <td class="acc">
+                            <div style="display:flex; align-items:center; justify-content:space-between;">
+                                <span>${accDisplay}</span>
+                                <button class="btn-icon" onclick="window.openAccModal('${name}')" style="font-size:14px; margin-left:5px;">✏️</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+
+                excelContent += `${name}\t${finalAmt}\t${acc ? acc.bankName : '(未設定)'}\t${acc ? acc.account : ''}\n`;
+                
+                let copyTxt = `${name} `;
+                if(dateRange) copyTxt += `(${dateRange}) `;
+                copyTxt += `總金額：${finalAmt}\n`;
+                if(acc) copyTxt += `${acc.bankName} ${acc.account}`;
+                else copyTxt += `(請提供帳號)`;
+                if(billWarning) copyTxt += `\n\n${billWarning}`;
+
+                let cardStateClass = "";
+                let headerStateClass = "header-pending"; 
+                let statusText = "⏳ 待處理";
+                
+                if (isPaid) {
+                    cardStateClass = "is-paid"; headerStateClass = "header-paid"; statusText = "✅ 已入帳";
+                } else if (isMissing) {
+                    cardStateClass = "missing-account"; headerStateClass = "header-missing";
+                }
+
+                const displayStyle = isAllDetailsExpanded ? 'block' : 'none';
+                const btnText = isAllDetailsExpanded ? '🔼 收起每日明細' : '🔽 展開每日明細';
+
+                // 🌟 卡片內容生成 🌟
+                let html = `
+                <div class="person-card ${cardStateClass}">
+                    <div class="card-header ${headerStateClass}">
+                        <span class="clickable-name" onclick="window.copyToClipboard('${encodeURIComponent(name)}', '✅ 複製姓名：${name}')" title="點擊複製姓名">${name}</span>
+                        <span style="font-size: 22px;">$${finalAmt.toLocaleString()}</span>
+                    </div>
+                    <div class="card-body">
+                        
+                        <div class="detail-toggle-btn" id="toggle-btn-${safeNameId}" onclick="toggleDetails('${safeNameId}')">${btnText}</div>
+                        
+                        <div id="detail-table-${safeNameId}" class="detail-table-container" style="display:${displayStyle};">
+                            <table class="detail-table">`;
+                
+                DAY_ORDER.forEach(d => {
+                    const arr = p.data[d]; const sum = arr.reduce((a,b)=>a+b, 0);
+                    if(arr.length > 0 || sum !== 0) html += `<tr><td class="col-day">${DAY_MAP[d]}</td><td class="col-data">${arr.join(', ')}</td><td class="col-subtotal">${sum}</td></tr>`;
+                });
+                
+                html += `   </table>
+                        </div>`;
+
+                if (acc) {
+                    html += `
+                    <div class="account-display">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="color:#7f8c8d; font-size:14px;">🏦</span>
+                            <span style="font-weight:bold; color:#2c3e50;">${acc.bankName}</span> 
+                            <span style="font-family:monospace; font-size:14px; color:#2980b9; font-weight:bold;">${acc.account}</span>
+                        </div>
+                        <button class="btn-icon" onclick="window.toggleEdit('${safeNameId}')" title="展開卡片內編輯">✏️</button>
+                    </div>`;
+                } else {
+                    html += `
+                    <div class="account-display missing-account-box">
+                        <span class="missing-msg">⚠️ 尚未設定銀行帳號</span>
+                        <button class="btn-icon" onclick="window.toggleEdit('${safeNameId}')" title="展開卡片內編輯">✏️</button>
+                    </div>`;
+                }
+
+                html += `
+                        <div id="edit-area-${safeNameId}" class="edit-area">
+                            <input type="text" id="bank-${safeNameId}" value="${acc ? acc.bankName : ''}" placeholder="銀行 (例: 822 或 中信)">
+                            <input type="text" id="acc-${safeNameId}" value="${acc ? acc.account : ''}" placeholder="請輸入銀行帳號">
+                            <button class="btn-save-sync" onclick="window.saveCardAccount('${name}', '${safeNameId}')">💾 儲存並同步</button>
+                        </div>
+                        <button class="btn-copy-card" onclick="window.copyToClipboard('${encodeURIComponent(copyTxt)}')">📋 複製對帳單給 ${name}</button>
+                    </div>
+                    
+                    <div class="payment-status-bar">
+                        <span class="status-badge ${isPaid ? 'paid' : ''}">${statusText}</span>
+                        <label class="switch">
+                            <input type="checkbox" onchange="togglePaymentStatus('${name}', this.checked)" ${isPaid ? 'checked' : ''}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>`;
+                
+                reportDiv.innerHTML += html;
+            });
+
+            tableViewBody.innerHTML = tableHtml;
+
+            let excelList = Object.keys(personData).map(name => {
+                const acc = localAccounts.find(a => a && a.name === name);
+                return { name: name, total: Math.round(personData[name].total * 100), bankName: acc ? acc.bankName : '(未設定)', account: acc ? acc.account : '' };
+            });
+            excelList.sort((a, b) => {
+                if (a.bankName !== b.bankName) return a.bankName.localeCompare(b.bankName, "zh-Hant");
+                return a.name.localeCompare(b.name, "zh-Hant");
+            });
+            excelContent = "名稱\t總金額\t銀行\t帳號\n";
+            excelList.forEach(item => { excelContent += `${item.name}\t${item.total}\t${item.bankName}\t${item.account}\n`; });
+            window.excelStringToCopy = excelContent;
+        }
+
+        async function init() {
+            const badge = $('systemModeBadge');
+            try { await auth.signInAnonymously(); } catch (e) {}
+
+            db.ref('.info/connected').on('value', snap => {
+                if (snap.val() === true) {
+                    badge.innerText = '☁️ 已連線'; badge.className = 'mode-badge mode-connected';
+                } else {
+                    badge.innerText = '連線中...'; badge.className = 'mode-badge mode-connecting';
+                }
+            });
+
+            db.ref('weekly_data/accounts').on('value', snap => {
+                const val = snap.val();
+                if (val) {
+                    localAccounts = val.accounts || [];
+                    renderAccountTable(); generateReport();
+                }
+            });
+
+            initWeekSelector();
+        }
+
+        function renderAccountTable() {
+            const tbody = document.getElementById('accTableBody');
+            const filter = document.getElementById('accSearchInput').value.toLowerCase();
+            tbody.innerHTML = '';
+            
+            const displayList = [...localAccounts].sort((a,b) => a.bankName.localeCompare(b.bankName) || a.name.localeCompare(b.name));
+            
+            displayList.forEach(acc => {
+                if (filter && !acc.name.toLowerCase().includes(filter) && !acc.account.includes(filter)) return;
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${acc.name}</strong></td>
+                        <td>
+                            <div style="color:#2c3e50;">${acc.bankName}</div>
+                            <div style="font-family:monospace; color:#7f8c8d; margin-top:3px;">${acc.account}</div>
+                        </td>
+                        <td>
+                            <button class="btn-sm-action btn-edit" onclick="openAccModal('${acc.name}')">✏️</button>
+                            <button class="btn-sm-action btn-del" onclick="deleteAccount('${acc.name}')">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        window.openAccModal = function(editName = null) {
+            const title = $('accModalTitle');
+            const nameInput = $('modalAccName'); const bankInput = $('modalAccBank'); const numInput = $('modalAccNum'); const originalInput = $('editOriginalName');
+            
+            $('accEditModal').style.display = 'flex';
+            
+            if (editName) {
+                const acc = localAccounts.find(a => a.name === editName);
+                if (acc) {
+                    title.innerText = "編輯帳戶"; nameInput.value = acc.name; numInput.value = acc.account; originalInput.value = acc.name;
+                    let bankFound = false;
+                    for(let i=0; i<bankInput.options.length; i++) {
+                        if (acc.bankName.includes(bankInput.options[i].text.split(' ')[1])) { bankInput.selectedIndex = i; bankFound = true; break; }
+                    }
+                    if (!bankFound) bankInput.value = "🏛️ 其他銀行";
+                }
+            } else {
+                title.innerText = "新增帳戶"; nameInput.value = ''; bankInput.selectedIndex = 0; numInput.value = ''; originalInput.value = '';
+            }
+        };
+
+        window.closeAccModal = function() { $('accEditModal').style.display = 'none'; };
+
+        window.saveAccountFromModal = function() {
+            const name = $('modalAccName').value.trim(); const bank = $('modalAccBank').value;
+            const num = $('modalAccNum').value.trim(); const originalName = $('editOriginalName').value;
+
+            if (!name || !num) { alert("名稱與帳號必填！"); return; }
+            const cleanNum = num.replace(/[^\d]/g, '');
+            const formattedNum = cleanNum.length > 6 ? cleanNum.replace(/(.{4})/g, '$1-').replace(/-$/, '') : num;
+
+            if (originalName) localAccounts = localAccounts.filter(a => a.name !== originalName);
+            if (name !== originalName && localAccounts.some(a => a.name === name)) {
+                if(!confirm(`名稱「${name}」已存在，確定要覆蓋嗎？`)) return;
+                localAccounts = localAccounts.filter(a => a.name !== name);
+            }
+            
+            localAccounts.push({ name: name, bankName: bank, account: formattedNum });
+            commitAccountData(localAccounts);
+            closeAccModal(); showToast("✅ 帳戶已儲存");
+        };
+
+        window.deleteAccount = function(name) {
+            if (confirm(`確定要刪除「${name}」的帳戶資料嗎？`)) {
+                localAccounts = localAccounts.filter(a => a.name !== name);
+                commitAccountData(localAccounts);
+                showToast("🗑️ 帳戶已刪除");
+            }
+        };
+
+        // --- 剪貼簿與通知 ---
+        window.showToast = function(msg) {
+            const t = $('toast'); t.innerText = msg; t.className = 'show';
+            setTimeout(() => t.className = '', 2000);
+        };
+
+        window.copyToClipboard = (encoded, customMsg) => {
+            const txt = decodeURIComponent(encoded);
+            const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+            showToast(customMsg || "📋 已複製！");
+        };
+
+        $('copyExcelDataBtn').onclick = () => {
+            if (!window.excelStringToCopy) { alert("⚠️ 沒有資料可複製"); return; }
+            const ta = document.createElement('textarea'); ta.value = window.excelStringToCopy; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+            showToast("✅ Excel 總表已複製");
+        };
+
+        let typingTimer;
+        $('inputData').addEventListener('input', (e) => {
+            clearTimeout(typingTimer); generateReport();
+            typingTimer = setTimeout(() => { saveSalesData(e.target.value); }, 1000);
+        });
+
+        $('calculateButton').onclick = generateReport;
+        $('clearButton').onclick = () => { if(confirm('確定清空這週的業績資料？')) { $('inputData').value = ''; saveSalesData(''); } };
+
+        init();
+    </script>
+</body>
+</html>
