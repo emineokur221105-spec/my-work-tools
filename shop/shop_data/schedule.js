@@ -9,6 +9,9 @@ function renderSidebar() {
         const staffRegion = staff.region || (REGIONS.length > 0 ? REGIONS[0] : "未分類");
         if (currentRegion !== 'All' && staffRegion !== currentRegion) return;
 
+        // 🌟 新增這行：如果開啟了篩選，且該人員沒上班，就不畫他的左側名單
+        if (showWorkingOnly && staff.attendance === false) return;
+
         const regionColor = getRegionColor(staffRegion);
 
         let regionOptions = "";
@@ -89,6 +92,9 @@ function renderTracksOnly() {
     staffData.forEach(staff => { 
         const staffRegion = staff.region || (REGIONS.length > 0 ? REGIONS[0] : "未分類");
         if (currentRegion !== 'All' && staffRegion !== currentRegion) return;
+
+        // 🌟 新增這行：同步隱藏他的右側時間軸格子
+        if (showWorkingOnly && staff.attendance === false) return;
 
         const trackDiv = document.createElement('div'); 
         trackDiv.className = 'track-row'; 

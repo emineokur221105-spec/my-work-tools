@@ -38,3 +38,6 @@ let currentParamsStaffId = null;
 
 // 👇 日結鎖定狀態
 let isLocked = false;
+
+// 🌟 新增：是否僅顯示上班人員的開關
+let showWorkingOnly = false;

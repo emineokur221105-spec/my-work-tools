@@ -143,6 +143,9 @@ function renderRegionTabs() {
     
     let html = `<button class="region-btn ${currentRegion === 'All' ? 'active' : ''}" onclick="switchRegion('All')">全部顯示</button>`; 
     
+    // 🌟 新增：把「僅顯示上班」的按鈕加在全部顯示的右邊
+    html += `<button class="region-btn" onclick="toggleWorkingOnly()" style="margin-left: 10px; border: 1px solid #27ae60; color: ${showWorkingOnly ? 'white' : '#27ae60'}; background: ${showWorkingOnly ? '#27ae60' : 'white'};">${showWorkingOnly ? '取消篩選' : '僅顯示上班'}</button>`;
+
     let weeklyHtml = "";
     if (typeof currentWeeklyRegions !== 'undefined') {
         weeklyHtml += `<button class="region-btn ${currentWeeklyRegions.includes('All') ? 'active' : ''}" onclick="switchWeeklyRegion('All')">全部顯示</button>`; 
@@ -161,6 +164,19 @@ function renderRegionTabs() {
 }
 
 function switchRegion(region) { currentRegion = region; renderRegionTabs(); const isScheduleActive = document.getElementById('view-schedule').classList.contains('active'); if(isScheduleActive) renderScheduleAll(); else renderSettlementTable(); }
+
+// 🌟 新增：切換「僅顯示上班人員」的函式
+window.toggleWorkingOnly = function() {
+    showWorkingOnly = !showWorkingOnly; // 切換開關狀態
+    renderRegionTabs(); // 更新按鈕的顏色
+    
+    // 根據目前在哪個分頁，重新畫畫面
+    if (document.getElementById('view-schedule') && document.getElementById('view-schedule').classList.contains('active')) {
+        if (typeof renderScheduleAll === 'function') renderScheduleAll();
+    } else if (document.getElementById('view-settle') && document.getElementById('view-settle').classList.contains('active')) {
+        if (typeof renderSettlementTable === 'function') renderSettlementTable();
+    }
+};
 
 // 🌟 新增：更新該區域前標的函數
 window.updateRegionPrefix = function(value) {
