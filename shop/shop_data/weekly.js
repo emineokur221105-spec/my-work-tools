@@ -1,20 +1,49 @@
 // === weekly.js : 周結算邏輯 (獨立週次升級版) ===
 
 let availableDailyData = {};
-let groupedWeeks = {};       // 存放所有分組好的週次 { "03/16 - 03/22": ["03-16", "03-17"...] }
-let sortedWeekLabels = [];   // 用來顯示上方按鈕的陣列
-let activeWeekLabel = null;  // 目前選擇的是哪一週
+let groupedWeeks = {};       
+let sortedWeekLabels = [];   
+let activeWeekLabel = null;  
 
-let selectedWeeklyDays = []; // 該週被勾選的日期
-let weeklyExpenseGroups = []; // 該週獨立的支出細項
+let selectedWeeklyDays = []; 
+let weeklyExpenseGroups = []; 
+
+// 🌟 全新升級：改成「陣列」來支援多個區域同時選取！
+let currentWeeklyRegions = ['All']; 
 
 window.addWeeklyExpense = function() { addExpenseGroup(); }
 
+// 🌟 點擊區域標籤切換時觸發 (多選邏輯)
+window.switchWeeklyRegion = function(region) {
+    if (region === 'All') {
+        currentWeeklyRegions = ['All']; // 點擊全部，就只留下全部
+    } else {
+        // 先把 'All' 給濾掉
+        currentWeeklyRegions = currentWeeklyRegions.filter(r => r !== 'All');
+        
+        // 如果已經選過了，就取消選取；如果沒選過，就加進去
+        if (currentWeeklyRegions.includes(region)) {
+            currentWeeklyRegions = currentWeeklyRegions.filter(r => r !== region);
+        } else {
+            currentWeeklyRegions.push(region);
+        }
+        
+        // 如果全部都取消選取了，預設跳回 'All'
+        if (currentWeeklyRegions.length === 0) {
+            currentWeeklyRegions = ['All'];
+        }
+    }
+    
+    if (typeof renderRegionTabs === 'function') renderRegionTabs(); // 更新按鈕顏色
+    calculateWeekly(); // 重新計算多區加總
+}
+
 function loadWeeklyData() {
+    if (typeof renderRegionTabs === 'function') renderRegionTabs(); 
+
     db.ref('shop_v8_daily_summaries').once('value').then(snap => {
         availableDailyData = snap.val() || {};
         
-        // 1. 自動判斷星期一到日，將日結資料分組
         groupedWeeks = {};
         const safeDates = Object.keys(availableDailyData);
         const currentYear = new Date().getFullYear();
@@ -25,7 +54,6 @@ function loadWeeklyData() {
             const parts = realDateStr.split('/');
             if (parts.length !== 2) return;
             
-            // 解析出日期，推算出該週的星期一和星期日
             const dateObj = new Date(currentYear, parseInt(parts[0]) - 1, parseInt(parts[1]));
             const day = dateObj.getDay();
             const diffToMon = day === 0 ? -6 : 1 - day; 
@@ -34,13 +62,12 @@ function loadWeeklyData() {
             const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
             
             const fmt = dt => String(dt.getMonth()+1).padStart(2,'0') + '/' + String(dt.getDate()).padStart(2,'0');
-            const weekLabel = `${fmt(mon)} - ${fmt(sun)}`; // 產生如 "03/16 - 03/22" 的標籤
+            const weekLabel = `${fmt(mon)} - ${fmt(sun)}`; 
             
             if (!groupedWeeks[weekLabel]) groupedWeeks[weekLabel] = [];
             groupedWeeks[weekLabel].push(safeDateKey);
         });
         
-        // 確保每一週裡面的日期是按照時間排序的
         Object.keys(groupedWeeks).forEach(w => {
             groupedWeeks[w].sort((a,b) => {
                 const d1 = new Date(currentYear, a.split('-')[0]-1, a.split('-')[1]);
@@ -49,16 +76,13 @@ function loadWeeklyData() {
             });
         });
         
-        // 排列週次標籤 (由舊到新)
         sortedWeekLabels = Object.keys(groupedWeeks).sort((a,b) => {
             const d1 = new Date(currentYear, a.substring(0,2)-1, a.substring(3,5));
             const d2 = new Date(currentYear, b.substring(0,2)-1, b.substring(3,5));
             return d1 - d2;
         });
         
-        // 2. 如果有資料，預設載入最新的一週
         if (sortedWeekLabels.length > 0) {
-            // 如果原本已經有選中的週次就維持，沒有就選最後一週
             if (!activeWeekLabel || !sortedWeekLabels.includes(activeWeekLabel)) {
                 activeWeekLabel = sortedWeekLabels[sortedWeekLabels.length - 1];
             }
@@ -71,16 +95,13 @@ function loadWeeklyData() {
     });
 }
 
-// 點擊週次按鈕時，載入該週的專屬設定與支出
 window.switchWeek = function(weekLabel) {
     activeWeekLabel = weekLabel;
-    const safeKey = weekLabel.replace(/\//g, '-').replace(/\s+/g, ''); // 轉成資料庫 key
+    const safeKey = weekLabel.replace(/\//g, '-').replace(/\s+/g, ''); 
     
-    // 讀取這週專屬的存檔 (使用 v4 隔離舊資料)
     db.ref('shop_v8_weekly_state_v4/' + safeKey).once('value').then(snap => {
         const state = snap.val() || {};
         
-        // 如果是全新的一週，預設全部打勾
         if (state.selectedDays) {
             selectedWeeklyDays = state.selectedDays;
         } else {
@@ -104,7 +125,6 @@ function renderWeeklyDays() {
         return;
     }
 
-    // 1. 渲染上方的「週次切換按鈕」
     let tabsHtml = `<div style="display:flex; gap:10px; overflow-x:auto; width:100%; border-bottom: 2px solid #ecf0f1; padding-bottom: 15px; margin-bottom: 15px;">`;
     sortedWeekLabels.forEach(w => {
         const isActive = w === activeWeekLabel;
@@ -113,7 +133,6 @@ function renderWeeklyDays() {
     tabsHtml += `</div>`;
     container.insertAdjacentHTML('beforeend', tabsHtml);
 
-    // 2. 渲染這週的「日期勾選區塊」
     if (!activeWeekLabel || !groupedWeeks[activeWeekLabel]) return;
 
     const weekDates = groupedWeeks[activeWeekLabel];
@@ -154,17 +173,10 @@ function renderWeeklyDays() {
     container.insertAdjacentHTML('beforeend', daysHtml);
 }
 
-// 🌟 一鍵全選或取消本週所有日期
 window.toggleWeekGroup = function(isChecked) {
     const weekDates = groupedWeeks[activeWeekLabel] || [];
-    if (isChecked) {
-        selectedWeeklyDays = [...weekDates];
-    } else {
-        selectedWeeklyDays = [];
-    }
-    saveWeeklyState(); 
-    renderWeeklyDays(); 
-    calculateWeekly();
+    if (isChecked) { selectedWeeklyDays = [...weekDates]; } else { selectedWeeklyDays = []; }
+    saveWeeklyState(); renderWeeklyDays(); calculateWeekly();
 };
 
 window.toggleWeeklyDay = function(safeDateKey, isChecked) {
@@ -173,17 +185,11 @@ window.toggleWeeklyDay = function(safeDateKey, isChecked) {
     saveWeeklyState(); renderWeeklyDays(); calculateWeekly();
 }
 
-// 刪除被勾選的日期紀錄
 window.deleteSelectedDays = function() {
     if (selectedWeeklyDays.length === 0) { alert("請先勾選想要刪除的日期！"); return; }
     if (confirm("確定要刪除打勾的日期紀錄嗎？\n(這不會影響排班表，只會清除結算紀錄)")) {
-        selectedWeeklyDays.forEach(safeDateKey => { 
-            db.ref('shop_v8_daily_summaries/' + safeDateKey).remove(); 
-        });
-        selectedWeeklyDays = []; 
-        showToast("🗑️ 已刪除歷史紀錄");
-        // 刪除後直接重新載入整個系統整理狀態
-        loadWeeklyData(); 
+        selectedWeeklyDays.forEach(safeDateKey => { db.ref('shop_v8_daily_summaries/' + safeDateKey).remove(); });
+        selectedWeeklyDays = []; showToast("🗑️ 已刪除歷史紀錄"); loadWeeklyData(); 
     }
 }
 
@@ -228,68 +234,56 @@ function renderWeeklyExpenses() {
                 </button>
             </div>
         </div>`;
-        
         container.insertAdjacentHTML('beforeend', html);
     });
 }
 
-function addExpenseGroup() { 
-    weeklyExpenseGroups.push({ payer: '', items: [{item:'', amount:0}] }); 
-    renderWeeklyExpenses(); 
-    saveWeeklyState(); 
-}
-function removeExpenseGroup(pIdx) { 
-    if(confirm('確定要刪除此人員及其所有支出項目嗎？')) {
-        weeklyExpenseGroups.splice(pIdx, 1); 
-        renderWeeklyExpenses(); 
-        calculateWeekly(); 
-        saveWeeklyState(); 
-    }
-}
-function updateExpenseGroup(pIdx, field, val) { 
-    weeklyExpenseGroups[pIdx][field] = val; 
-    saveWeeklyState(); 
-}
-function addExpenseItem(pIdx) { 
-    weeklyExpenseGroups[pIdx].items.push({ item: '', amount: 0 }); 
-    renderWeeklyExpenses(); 
-    saveWeeklyState(); 
-}
-function removeExpenseItem(pIdx, iIdx) { 
-    weeklyExpenseGroups[pIdx].items.splice(iIdx, 1); 
-    renderWeeklyExpenses(); 
-    calculateWeekly(); 
-    saveWeeklyState(); 
-}
-function updateExpenseItem(pIdx, iIdx, field, val) { 
-    if(field === 'amount') val = parseInt(val) || 0; 
-    weeklyExpenseGroups[pIdx].items[iIdx][field] = val; 
-    if(field === 'amount') renderWeeklyExpenses();
-    calculateWeekly(); 
-    saveWeeklyState(); 
-}
-
-// 儲存狀態時，使用該週的專屬 Key (v4)
-function saveWeeklyState() { 
-    if (!activeWeekLabel) return;
-    const safeKey = activeWeekLabel.replace(/\//g, '-').replace(/\s+/g, '');
-    db.ref('shop_v8_weekly_state_v4/' + safeKey).set({ selectedDays: selectedWeeklyDays, expenses: weeklyExpenseGroups }); 
-}
+function addExpenseGroup() { weeklyExpenseGroups.push({ payer: '', items: [{item:'', amount:0}] }); renderWeeklyExpenses(); saveWeeklyState(); }
+function removeExpenseGroup(pIdx) { if(confirm('確定要刪除此人員及其所有支出項目嗎？')) { weeklyExpenseGroups.splice(pIdx, 1); renderWeeklyExpenses(); calculateWeekly(); saveWeeklyState(); } }
+function updateExpenseGroup(pIdx, field, val) { weeklyExpenseGroups[pIdx][field] = val; saveWeeklyState(); }
+function addExpenseItem(pIdx) { weeklyExpenseGroups[pIdx].items.push({ item: '', amount: 0 }); renderWeeklyExpenses(); saveWeeklyState(); }
+function removeExpenseItem(pIdx, iIdx) { weeklyExpenseGroups[pIdx].items.splice(iIdx, 1); renderWeeklyExpenses(); calculateWeekly(); saveWeeklyState(); }
+function updateExpenseItem(pIdx, iIdx, field, val) { if(field === 'amount') val = parseInt(val) || 0; weeklyExpenseGroups[pIdx].items[iIdx][field] = val; if(field === 'amount') renderWeeklyExpenses(); calculateWeekly(); saveWeeklyState(); }
+function saveWeeklyState() { if (!activeWeekLabel) return; const safeKey = activeWeekLabel.replace(/\\/g, '-').replace(/\\s+/g, ''); db.ref('shop_v8_weekly_state_v4/' + safeKey).set({ selectedDays: selectedWeeklyDays, expenses: weeklyExpenseGroups }); }
 
 function calculateWeekly() {
     let w_rev = 0, w_aunt = 0, w_agentTotal = 0, w_works = 0, w_dailyProfit = 0; let w_agentMap = {};
-    
     let dailyRevHtml = ''; let dailyAuntHtml = ''; let dailyWorksHtml = ''; let dailyProfitHtml = '';
 
     selectedWeeklyDays.forEach(safeDateKey => {
         const d = availableDailyData[safeDateKey]; if(!d) return;
         
-        const dayRev = d.revenue || 0;
-        const dayAunt = d.aunt || 0;
-        const dayAgent = d.agentTotal || 0;
-        const dayWorks = d.works || 0;
-        const dayProfit = d.profit || 0;
+        let dayRev = 0, dayAunt = 0, dayAgent = 0, dayWorks = 0, dayProfit = 0;
+        let dayAgentMap = {};
         const dateName = d.dateName || safeDateKey.replace(/-/g, '/');
+
+        // 🌟 核心：如果是 All 就拿全部，否則跑迴圈把被選取的地區資料「全部加起來」
+        if (currentWeeklyRegions.includes('All')) {
+            dayRev = d.revenue || 0;
+            dayAunt = d.aunt || 0;
+            dayAgent = d.agentTotal || 0;
+            dayWorks = d.works || 0;
+            dayProfit = d.profit || 0;
+            dayAgentMap = d.agentMap || {};
+        } else {
+            currentWeeklyRegions.forEach(region => {
+                if (d.regionData && d.regionData[region]) {
+                    const rd = d.regionData[region];
+                    dayRev += rd.revenue || 0;
+                    dayAunt += rd.aunt || 0;
+                    dayAgent += rd.agentTotal || 0;
+                    dayWorks += rd.works || 0;
+                    dayProfit += rd.profit || 0;
+                    
+                    if (rd.agentMap) {
+                        Object.entries(rd.agentMap).forEach(([name, fee]) => {
+                            if(!dayAgentMap[name]) dayAgentMap[name] = 0;
+                            dayAgentMap[name] += fee;
+                        });
+                    }
+                }
+            });
+        }
 
         w_rev += dayRev; w_aunt += dayAunt; w_agentTotal += dayAgent; w_works += dayWorks; w_dailyProfit += dayProfit;
         
@@ -298,13 +292,11 @@ function calculateWeekly() {
         if (dayWorks > 0) dailyWorksHtml += `<div style="display:flex; justify-content:space-between; margin-bottom:2px;"><span>${dateName}</span> <span>${dayWorks.toLocaleString()}</span></div>`;
         if (dayProfit !== 0) dailyProfitHtml += `<div style="display:flex; justify-content:space-between; margin-bottom:2px;"><span>${dateName}</span> <span>$${dayProfit.toLocaleString()}</span></div>`;
 
-        if(d.agentMap) { Object.entries(d.agentMap).forEach(([name, fee]) => { if(!w_agentMap[name]) w_agentMap[name] = 0; w_agentMap[name] += fee; }); }
+        if(dayAgentMap) { Object.entries(dayAgentMap).forEach(([name, fee]) => { if(!w_agentMap[name]) w_agentMap[name] = 0; w_agentMap[name] += fee; }); }
     });
     
     let w_expTotal = 0; 
-    weeklyExpenseGroups.forEach(group => {
-        group.items.forEach(exp => { w_expTotal += (parseInt(exp.amount) || 0); });
-    });
+    weeklyExpenseGroups.forEach(group => { group.items.forEach(exp => { w_expTotal += (parseInt(exp.amount) || 0); }); });
     
     const finalProfit = w_rev - w_aunt - w_agentTotal - w_expTotal;
     
@@ -339,7 +331,6 @@ window.copyWeeklyReport = function() {
     if(agentNodes.length > 0) { agentNodes.forEach(el => agentText += el.innerText + '\n'); } else { agentText = '無\n'; }
 
     let expText = ''; let expTotal = 0;
-    
     if(weeklyExpenseGroups.length > 0) {
         weeklyExpenseGroups.forEach(group => {
             let pName = group.payer || '未命名人員';
@@ -354,6 +345,9 @@ window.copyWeeklyReport = function() {
         if(expTotal > 0) expText += `\n支出總額: $${expTotal.toLocaleString()}\n`; else expText = '無\n';
     } else { expText = '無\n'; }
     
-    const report = `【結算報表】\n結算區間：${activeWeekLabel}\n包含日期：${datesText}\n總工數：${works}\n------------------\n總營收：${rev}\n總阿姨：${aunt}\n總經紀：${agent}\n\n[各經紀明細]\n${agentText.trim()}\n------------------\n[支出明細]\n${expText.trim()}\n==================\n💰 最終盈餘：${finalProfit}`;
-    navigator.clipboard.writeText(report).then(() => { showToast("📋 周結報表已複製！"); }).catch(() => { alert("複製失敗。"); });
+    // 🌟 在報表開頭補上現在選取的區域名字 (用 + 號連接起來)
+    const regionText = currentWeeklyRegions.includes('All') ? '全店總和' : currentWeeklyRegions.join(' + ');
+    const report = `【周結報表】(${regionText})\n結算區間：${activeWeekLabel}\n包含日期：${datesText}\n總工數：${works}\n------------------\n總營收：${rev}\n總阿姨：${aunt}\n總經紀：${agent}\n\n[各經紀明細]\n${agentText.trim()}\n------------------\n[支出明細]\n${expText.trim()}\n==================\n💰 最終盈餘：${finalProfit}`;
+    
+    navigator.clipboard.writeText(report).then(() => { showToast(`📋 已複製 ${regionText} 周結報表！`); }).catch(() => { alert("複製失敗。"); });
 }

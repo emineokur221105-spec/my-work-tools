@@ -80,8 +80,12 @@ function cleanupOldData() {
 async function switchDate(newDateStr) {
     if (currentDbRef) currentDbRef.off(); 
     let formattedDate = formatZeroPadDate(newDateStr); currentActiveDate = formattedDate;
-    document.getElementById('dateInput').value = formattedDate; const navDateDisplay = document.getElementById('navDateDisplay'); if(navDateDisplay) navDateDisplay.innerText = formattedDate;
+    
+    document.getElementById('dateInput').value = formattedDate; 
+    const navDateDisplay = document.getElementById('navDateDisplay'); if(navDateDisplay) navDateDisplay.innerText = formattedDate;
     const settleDateInput = document.getElementById('settleDateInput'); if(settleDateInput) settleDateInput.value = formattedDate;
+    const settleDateDisplay = document.getElementById('settleDateDisplay'); if(settleDateDisplay) settleDateDisplay.innerText = formattedDate;
+    
     localStorage.setItem('lastActiveDate', formattedDate);
     const safeDate = formattedDate.replace(/\//g, '-'); currentDbRef = db.ref('shop_v8_daily_schedules/' + safeDate);
     syncStatus.style.background = "orange";
@@ -123,7 +127,34 @@ function syncDate(newDate) { if (!newDate) return; let formatted = formatZeroPad
 function toggleSettleLock() { isLocked = !isLocked; saveScheduleData(); updateLockUI(); if (document.getElementById('view-settle').classList.contains('active')) { renderSettlementTable(); } if (document.getElementById('view-schedule').classList.contains('active')) { renderScheduleAll(); } if (isLocked) { if (typeof pushDailySummary === 'function') { pushDailySummary(); } showToast("🔒 帳單已鎖定，並已同步至周結報表！"); } else { showToast("🔓 帳單已解鎖，可以修改了！(尚未同步)"); } }
 function updateLockUI() { const btn = document.getElementById('lockSettleBtn'); const settleDateInput = document.getElementById('settleDateInput'); if (!btn) return; if (isLocked) { btn.innerHTML = "🔒 已鎖定 (點擊解鎖)"; btn.style.background = "#e74c3c"; if(settleDateInput) settleDateInput.disabled = true; } else { btn.innerHTML = "🔓 開放編輯中 (點擊鎖定)"; btn.style.background = "#2ecc71"; if(settleDateInput) settleDateInput.disabled = false; } document.querySelectorAll('.config-panel input').forEach(inp => { inp.disabled = isLocked; inp.style.background = isLocked ? "#f4f6f9" : "#fff"; }); const resetBtn = document.querySelector('.action-btn-reset'); if (resetBtn) { resetBtn.disabled = isLocked; resetBtn.style.opacity = isLocked ? '0.5' : '1'; resetBtn.style.cursor = isLocked ? 'not-allowed' : 'pointer'; } ['openHour', 'closeHour'].forEach(id => { const el = document.getElementById(id); if (el) { el.disabled = isLocked; el.style.background = isLocked ? "#f4f6f9" : "#fff"; } }); }
 function switchTab(tabId) { document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active')); document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active')); document.getElementById('view-' + tabId).classList.add('active'); const btns = document.querySelectorAll('.tab-btn'); if(tabId === 'schedule') btns[0].classList.add('active'); else if(tabId === 'settle') btns[1].classList.add('active'); else if(tabId === 'weekly') btns[2].classList.add('active'); renderRegionTabs(); if(tabId === 'schedule') setTimeout(() => { renderScheduleAll(); updateTimeLineAndClock(); }, 50); if(tabId === 'settle') setTimeout(() => { renderSettlementTable(); }, 50); if(tabId === 'weekly') setTimeout(() => { if(typeof loadWeeklyData === 'function') loadWeeklyData(); }, 50); }
-function renderRegionTabs() { const scheduleContainer = document.getElementById('scheduleRegionTabs'); const settleContainer = document.getElementById('settleRegionTabs'); let html = `<button class="region-btn ${currentRegion === 'All' ? 'active' : ''}" onclick="switchRegion('All')">全部顯示</button>`; REGIONS.forEach(r => { html += `<button class="region-btn ${currentRegion === r ? 'active' : ''}" onclick="switchRegion('${r}')">${r}</button>`; }); if(scheduleContainer) scheduleContainer.innerHTML = html; if(settleContainer) settleContainer.innerHTML = html; }
+
+// 🌟 核心修改：周結支援「陣列多選」判斷
+function renderRegionTabs() { 
+    const scheduleContainer = document.getElementById('scheduleRegionTabs'); 
+    const settleContainer = document.getElementById('settleRegionTabs'); 
+    const weeklyContainer = document.getElementById('weeklyRegionTabs'); 
+    
+    // 排班與日結 (維持單選)
+    let html = `<button class="region-btn ${currentRegion === 'All' ? 'active' : ''}" onclick="switchRegion('All')">全部顯示</button>`; 
+    
+    // 周結 (支援多選，判斷包含在陣列中)
+    let weeklyHtml = "";
+    if (typeof currentWeeklyRegions !== 'undefined') {
+        weeklyHtml += `<button class="region-btn ${currentWeeklyRegions.includes('All') ? 'active' : ''}" onclick="switchWeeklyRegion('All')">全部顯示</button>`; 
+    }
+
+    REGIONS.forEach(r => { 
+        html += `<button class="region-btn ${currentRegion === r ? 'active' : ''}" onclick="switchRegion('${r}')">${r}</button>`; 
+        if (typeof currentWeeklyRegions !== 'undefined') {
+            weeklyHtml += `<button class="region-btn ${currentWeeklyRegions.includes(r) ? 'active' : ''}" onclick="switchWeeklyRegion('${r}')">${r}</button>`; 
+        }
+    }); 
+    
+    if(scheduleContainer) scheduleContainer.innerHTML = html; 
+    if(settleContainer) settleContainer.innerHTML = html; 
+    if(weeklyContainer && weeklyHtml) weeklyContainer.innerHTML = weeklyHtml; 
+}
+
 function switchRegion(region) { currentRegion = region; renderRegionTabs(); const isScheduleActive = document.getElementById('view-schedule').classList.contains('active'); if(isScheduleActive) renderScheduleAll(); else renderSettlementTable(); }
 function updateStaffName(id, newName) { staffData = staffData.map(staff => staff.id === id ? { ...staff, name: newName } : staff); saveScheduleData(); }
 function updateStaffRegion(id, newRegion) { staffData = staffData.map(staff => staff.id === id ? { ...staff, region: newRegion } : staff); saveScheduleData(); renderScheduleAll(); }
@@ -252,7 +283,6 @@ window.toggleTopBar = function() {
             toggleBtn.innerText = '🔼';
         }
         
-        // 稍微延遲重繪一下，避免畫面有白邊
         setTimeout(() => {
             if (document.getElementById('view-schedule') && document.getElementById('view-schedule').classList.contains('active')) {
                 if (typeof renderTracksOnly === 'function') {

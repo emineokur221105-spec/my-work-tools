@@ -4,13 +4,10 @@ let currentDailySummaryData = null;
 
 function calculateSettlement(staff, commTable, costTable, workTable, services) {
     const results = []; let totalWorks = 0; 
-    
-    // 🌟 核心防呆：確保 content 不是 undefined，否則給予空字串
     const safeContent = staff.content || "";
     if (!safeContent.trim()) return { results, totalWorks };
     
     const lines = safeContent.split('\n'); const overrides = staff.overrides || {};
-
     let activeBlockDate = currentActiveDate;
 
     lines.forEach((line, index) => { 
@@ -71,7 +68,6 @@ function calculateSettlement(staff, commTable, costTable, workTable, services) {
 function renderSettlementTable() {
     renderRegionTabs();
     
-    // 🌟 安全取值函數
     const getGlobalVal = (id) => { const el = document.getElementById(id); return el ? (parseInt(el.value) || 0) : 0; };
     const globalCommTable = { "40-1": getGlobalVal('base_40_1'), "60-1": getGlobalVal('base_60_1'), "60-2": getGlobalVal('base_60_2'), "120-3": getGlobalVal('base_120_3'), "240-3": getGlobalVal('base_240_3') };
     const globalCostTable = { "40-1": getGlobalVal('cost_40_1'), "60-1": getGlobalVal('cost_60_1'), "60-2": getGlobalVal('cost_60_2'), "120-3": getGlobalVal('cost_120_3'), "240-3": getGlobalVal('cost_240_3') };
@@ -88,8 +84,6 @@ function renderSettlementTable() {
 
     staffData.forEach((staff) => {
         const staffRegion = staff.region || (REGIONS.length > 0 ? REGIONS[0] : "未分類");
-        if (currentRegion !== 'All' && staffRegion !== currentRegion) return;
-        
         const isAttending = staff.attendance !== false;
         const safeContent = staff.content || ""; 
         
@@ -111,6 +105,14 @@ function renderSettlementTable() {
         const manualExpense = staff.manualExpense !== undefined ? staff.manualExpense : 0; const staffAgentFee = totalWorks * agentRate; 
 
         const card = document.createElement('div'); card.className = 'staff-card-settle';
+        card.id = 'settle-card-' + staff.id; 
+        
+        // 🌟 核心修改：如果是其他區域，我們改用隱藏(display:none)而不是不渲染，確保能計算到該區總額！
+        if (currentRegion !== 'All' && staffRegion !== currentRegion) {
+            card.style.display = 'none';
+        }
+        
+        card.dataset.region = staffRegion; // 記錄這張卡片屬於哪個區域
         card.dataset.agentName = agentName; card.dataset.agentRate = agentRate; card.dataset.totalWorks = totalWorks; card.dataset.staffName = staff.name || "未填寫";
         card.style.background = '#fff'; card.style.borderRadius = '8px'; card.style.border = '1px solid #ccc'; card.style.overflowX = 'auto'; card.style.boxShadow = '0 2px 5px rgba(0,0,0,0.05)';
 
@@ -120,11 +122,11 @@ function renderSettlementTable() {
         let roomBadge = staff.roomName ? `<span style="background:#2c3e50; color:#f1c40f; padding:2px 6px; border-radius:4px; font-size:12px; margin-right:5px; border: 1px solid #f1c40f;">${staff.roomName}</span>` : "";
         let displayName = staff.name || "未填寫";
 
-        // 🌟 加寬表格、字體放大
         let headerHtml = `
             <div style="background:#f1c40f; padding:8px; display:flex; justify-content:space-between; align-items:center; min-width: 750px;">
                 <div style="font-size:16px; font-weight:bold; color:#e74c3c; display:flex; align-items:center; gap:5px; white-space: nowrap;">
                     ${roomBadge} ${displayName}
+                    <button onclick="copySingleSettlementToExcel(${staff.id}, '${displayName}')" style="background:#27ae60; color:white; border:none; padding:4px 8px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:12px; margin-left:10px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">📊 複製Excel</button>
                     <select onchange="updateStaffSettlement(${staff.id}, 'region', this.value)" ${disableAttr}
                             style="font-size:12px; padding:2px; margin-left:5px; border-radius:4px; border:1px solid #aaa; ${lockBg}">
                         ${regionOptions}
@@ -164,7 +166,6 @@ function renderSettlementTable() {
             const nameStyle = row.isError ? "color:#c0392b; font-weight:bold;" : "color:#2980b9; font-weight:bold; border-left:1px dashed #eee;";
             const normalCellBg = row.isError ? 'transparent' : (isLocked ? '#f4f6f9' : '#f9f9f9');
 
-            // 🌟 將第一欄取消隱藏，文字自動換行，並放大名稱、阿姨、收的字體
             headerHtml += `
                 <tr style="${rowStyle}">
                     <td style="padding:8px 5px; word-break: break-word; white-space: normal; line-height: 1.4; color:#2c3e50;">${row.isError ? '⚠️ ' : ''}${row.rawLine}</td>
@@ -203,17 +204,33 @@ function renderSettlementTable() {
 }
 
 function updateTotalsFromDOM() {
-    let dom_grand_total_revenue = 0; let dom_grand_total_aunt_points = 0; let dom_agent_fee_map = {}; let dom_grand_total_works = 0; let auntTextString = "";
+    // 🌟 全新升級：一次收集所有區域的資料，並且分開儲存！
+    let globalData = { rev: 0, aunt: 0, agent: 0, works: 0, map: {} };
+    let currentViewData = { rev: 0, aunt: 0, agent: 0, works: 0, map: {} };
+    let regionData = {};
+    if (typeof REGIONS !== 'undefined') REGIONS.forEach(r => regionData[r] = { revenue: 0, aunt: 0, agentTotal: 0, works: 0, profit: 0, agentMap: {} });
+
+    let auntTextString = "";
 
     document.querySelectorAll('.staff-card-settle').forEach(card => {
+        const region = card.dataset.region || '未分類';
+        if(!regionData[region]) regionData[region] = { revenue: 0, aunt: 0, agentTotal: 0, works: 0, profit: 0, agentMap: {} };
+
         let card_total_aunt_pts = 0; let card_total_rev = 0; let card_total_miss = 0; let card_total_bal = 0; let card_total_work = 0; 
+        const isCardVisible = card.style.display !== 'none'; // 判斷此卡片目前有沒有顯示在畫面上
+
         card.querySelectorAll('tbody tr:not(.footer-total)').forEach(row => { 
             const getVal = (cls) => {
                 const cell = row.querySelector(cls);
                 return cell ? (parseInt(cell.innerText.replace(/[^\d-]/g,'')) || 0) : 0;
             };
             const r_rev = getVal('.col-rev'); const r_miss = getVal('.col-miss'); const r_aunt = getVal('.col-aunt'); const r_work = getVal('.col-work');
-            if (r_aunt > 0) { let name = row.cells[1].innerText.trim(); auntTextString += `${name}${r_aunt} `; }
+            
+            if (r_aunt > 0 && isCardVisible) { 
+                let name = row.cells[1].innerText.trim(); 
+                auntTextString += `${name}${r_aunt} `; 
+            }
+            
             const r_bal = r_rev - r_miss; const balCell = row.querySelector('.col-bal'); if(balCell) balCell.innerText = r_bal; 
             card_total_rev += r_rev; card_total_miss += r_miss; card_total_aunt_pts += r_aunt; card_total_bal += r_bal; card_total_work += r_work;
         });
@@ -227,40 +244,73 @@ function updateTotalsFromDOM() {
 
         const final_bal = card_total_bal + manualExpense;
         const finalBalCell = card.querySelector('.final-balance'); if(finalBalCell) finalBalCell.innerText = final_bal;
-        dom_grand_total_revenue += final_bal; dom_grand_total_aunt_points += card_total_aunt_pts; dom_grand_total_works += card_total_work; 
-
+        
         const agentName = card.dataset.agentName; const agentRate = parseInt(card.dataset.agentRate || 300);
         const staffAgentFee = card_total_work * agentRate; 
         const feeDisplay = card.querySelector('.agent-fee-display'); if(feeDisplay) feeDisplay.innerText = `費用: $${staffAgentFee.toLocaleString()}`;
 
-        if (agentName) { if (!dom_agent_fee_map[agentName]) dom_agent_fee_map[agentName] = 0; dom_agent_fee_map[agentName] += staffAgentFee; }
+        // 1. 加總到：全店總額
+        globalData.rev += final_bal;
+        globalData.aunt += (card_total_aunt_pts * 100);
+        globalData.works += card_total_work;
+        globalData.agent += staffAgentFee;
+        if(agentName) {
+            if(!globalData.map[agentName]) globalData.map[agentName] = 0;
+            globalData.map[agentName] += staffAgentFee;
+        }
+
+        // 2. 加總到：專屬區域
+        regionData[region].revenue += final_bal;
+        regionData[region].aunt += (card_total_aunt_pts * 100);
+        regionData[region].works += card_total_work;
+        regionData[region].agentTotal += staffAgentFee;
+        if(agentName) {
+            if(!regionData[region].agentMap[agentName]) regionData[region].agentMap[agentName] = 0;
+            regionData[region].agentMap[agentName] += staffAgentFee;
+        }
+        regionData[region].profit += (final_bal - (card_total_aunt_pts * 100) - staffAgentFee);
+
+        // 3. 加總到：使用者目前畫面上看到的 (讓上方資料卡數字正確顯示)
+        if (isCardVisible) {
+            currentViewData.rev += final_bal;
+            currentViewData.aunt += (card_total_aunt_pts * 100);
+            currentViewData.works += card_total_work;
+            currentViewData.agent += staffAgentFee;
+            if(agentName) {
+                if(!currentViewData.map[agentName]) currentViewData.map[agentName] = 0;
+                currentViewData.map[agentName] += staffAgentFee;
+            }
+        }
     });
+
+    // 畫面更新：顯示使用者正在看的那個區塊的總和
+    const net_profit = currentViewData.rev - currentViewData.aunt - currentViewData.agent;
+    document.getElementById('total_revenue').innerText = currentViewData.rev.toLocaleString();
+    document.getElementById('total_aunt').innerText = currentViewData.aunt.toLocaleString(); 
+    document.getElementById('agent_fee_total_display').innerText = `$${currentViewData.agent.toLocaleString()}`;
+    document.getElementById('total_net_profit').innerText = net_profit.toLocaleString();
+    document.getElementById('total_works_summary').innerText = currentViewData.works.toLocaleString();
+
+    let agent_summary_html = "";
+    for (const [name, fee] of Object.entries(currentViewData.map)) {
+        agent_summary_html += `<div>${name}: $${fee.toLocaleString()}</div>`; 
+    }
+    document.getElementById('agent_fee_summary').innerHTML = agent_summary_html || "無";
 
     const dateStr = document.getElementById('dateInput').value;
     const textDisplay = document.getElementById('aunt_text_display');
     if (textDisplay) textDisplay.innerText = auntTextString.trim() ? `${dateStr}\n${auntTextString.trim()}` : "無資料";
 
-    const grand_total_aunt_money = dom_grand_total_aunt_points * 100; let grand_total_agent_fees = 0; let agent_summary_html = "";
-    for (const [name, fee] of Object.entries(dom_agent_fee_map)) {
-        grand_total_agent_fees += fee; agent_summary_html += `<div>${name}: $${fee.toLocaleString()}</div>`; 
-    }
-    
-    const net_profit = dom_grand_total_revenue - grand_total_aunt_money - grand_total_agent_fees;
-    document.getElementById('total_revenue').innerText = dom_grand_total_revenue.toLocaleString();
-    document.getElementById('total_aunt').innerText = grand_total_aunt_money.toLocaleString(); 
-    document.getElementById('agent_fee_total_display').innerText = `$${grand_total_agent_fees.toLocaleString()}`;
-    document.getElementById('agent_fee_summary').innerHTML = agent_summary_html || "無";
-    document.getElementById('total_net_profit').innerText = net_profit.toLocaleString();
-    document.getElementById('total_works_summary').innerText = dom_grand_total_works.toLocaleString();
-
+    // 🌟 將「全店資料」跟「各區資料」整包打包，準備存入 Firebase (周結要用的就是這個！)
     currentDailySummaryData = {
         dateName: dateStr,
-        revenue: dom_grand_total_revenue,
-        aunt: grand_total_aunt_money,
-        agentTotal: grand_total_agent_fees,
-        agentMap: dom_agent_fee_map,
-        works: dom_grand_total_works,
-        profit: net_profit,
+        revenue: globalData.rev,
+        aunt: globalData.aunt,
+        agentTotal: globalData.agent,
+        agentMap: globalData.map,
+        works: globalData.works,
+        profit: globalData.rev - globalData.aunt - globalData.agent,
+        regionData: regionData, // 🎉 這裡是周結的關鍵
         timestamp: Date.now() 
     };
 }
@@ -281,12 +331,14 @@ function copyDailyReport() {
 
     let staffDetails = "";
     document.querySelectorAll('.staff-card-settle').forEach(card => {
+        if (card.style.display === 'none') return; // 🌟 新增：只複製畫面上看得到的，如果是隱藏的區域就不複製
         let name = card.dataset.staffName || "未知";
         const balEl = card.querySelector('.final-balance'); const balance = balEl ? balEl.innerText.replace(/,/g, '') : "0";
         staffDetails += `${name} ${balance}\n`;
     });
 
-    const reportText = `${dateStr}\n總收 ${totalRev}\n---------------------\n阿姨 ${totalAunt}\n經紀 ${totalAgent}\n---------------------\n${staffDetails.trim()}\n===============\n盈餘 ${totalProfit}`;
+    const regionText = currentRegion === 'All' ? '' : ` (${currentRegion})`; // 🌟 新增：報表加上區域名字
+    const reportText = `${dateStr}${regionText}\n總收 ${totalRev}\n---------------------\n阿姨 ${totalAunt}\n經紀 ${totalAgent}\n---------------------\n${staffDetails.trim()}\n===============\n盈餘 ${totalProfit}`;
     const previewBox = document.getElementById('dailyReportPreview'); if(previewBox) previewBox.value = reportText;
     navigator.clipboard.writeText(reportText).then(() => { showToast("📊 報表已複製！"); }).catch(() => { showToast("❌ 複製失敗"); });
 }
@@ -296,3 +348,56 @@ function copyAuntText() {
     if (!text || text === "無資料") { showToast("⚠️ 沒有資料可複製"); return; }
     navigator.clipboard.writeText(text).then(() => { showToast("✅ 已複製！請手動填寫日期"); }).catch(() => { showToast("❌ 複製失敗"); });
 }
+
+window.copySingleSettlementToExcel = async function(staffId, staffName) {
+    const card = document.getElementById('settle-card-' + staffId);
+    if (!card) return;
+
+    let excelHtml = '<meta charset="UTF-8"><table border="1" style="border-collapse: collapse; font-family: sans-serif;">';
+
+    const table = card.querySelector('table');
+    if (!table) return;
+
+    const rows = table.querySelectorAll('tbody tr');
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length === 0) return;
+
+        if (cells[0].colSpan >= 8 || row.innerText.includes('📅')) return;
+        if (row.classList.contains('footer-total')) return;
+        if (cells[0].innerText.includes('雜支')) return;
+        if (cells[0].innerText.includes('修正後結餘')) return;
+
+        if (cells.length >= 6) {
+            excelHtml += '<tr>';
+            for (let i = 1; i <= 4; i++) {
+                const td = cells[i];
+                const cellText = td.innerText;
+                const isModified = td.classList.contains('manual-text');
+                const cellColor = isModified ? '#8e44ad' : 'black'; 
+                const fontWeight = isModified ? 'bold' : 'normal';
+                excelHtml += `<td style="color: ${cellColor}; font-weight: ${fontWeight}; text-align: center;">${cellText}</td>`;
+            }
+            excelHtml += '</tr>';
+        }
+    });
+
+    excelHtml += '</table>';
+
+    try {
+        const blobHtml = new Blob([excelHtml], { type: "text/html" });
+        const blobText = new Blob(["已複製 4 欄表格資料"], { type: "text/plain" }); 
+        const clipboardItem = new ClipboardItem({
+            "text/html": blobHtml,
+            "text/plain": blobText
+        });
+        await navigator.clipboard.write([clipboardItem]);
+        showToast(`✅ 已複製 4 欄純資料！`);
+    } catch (error) {
+        console.error("剪貼簿 API 失敗:", error);
+        const tempDiv = document.createElement("div"); tempDiv.innerHTML = excelHtml; tempDiv.style.position = "absolute"; tempDiv.style.left = "-9999px"; document.body.appendChild(tempDiv);
+        const range = document.createRange(); range.selectNodeContents(tempDiv); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+        const successful = document.execCommand('copy'); document.body.removeChild(tempDiv);
+        if(successful) showToast(`✅ 已複製 4 欄純資料！`); else showToast("❌ 複製失敗");
+    }
+};
