@@ -65,13 +65,16 @@ function calculateSettlement(staff, commTable, costTable, workTable, services) {
     return { results, totalWorks };
 }
 
+let renderSettleTimeout = null;
 function renderSettlementTable() {
+    if (renderSettleTimeout) clearTimeout(renderSettleTimeout);
+    renderSettleTimeout = setTimeout(() => { executeRenderSettlementTable(); }, 150); 
+}
+
+// 🌟 重構：讓主程式碼變得超級短，把畫圖的邏輯全部交給最下面的 Helper 函數！
+function executeRenderSettlementTable() {
     renderRegionTabs();
-    
-    const getGlobalVal = (id) => { const el = document.getElementById(id); return el ? (parseInt(el.value) || 0) : 0; };
-    const globalCommTable = { "40-1": getGlobalVal('base_40_1'), "60-1": getGlobalVal('base_60_1'), "60-2": getGlobalVal('base_60_2'), "120-3": getGlobalVal('base_120_3'), "240-3": getGlobalVal('base_240_3') };
-    const globalCostTable = { "40-1": getGlobalVal('cost_40_1'), "60-1": getGlobalVal('cost_60_1'), "60-2": getGlobalVal('cost_60_2'), "120-3": getGlobalVal('cost_120_3'), "240-3": getGlobalVal('cost_240_3') };
-    const globalWorkTable = { "40-1": WORK_UNIT_TABLE[40] || 0, "60-1": WORK_UNIT_TABLE[60] || 0, "60-2": WORK_UNIT_TABLE[60] || 0, "120-3": WORK_UNIT_TABLE[120] || 0, "240-3": WORK_UNIT_TABLE[240] || 0 };
+    const { globalCommTable, globalCostTable, globalWorkTable } = getGlobalPricingTables();
     
     const container = document.getElementById('table_body');
     if(!container) return;
@@ -107,97 +110,32 @@ function renderSettlementTable() {
         const card = document.createElement('div'); card.className = 'staff-card-settle';
         card.id = 'settle-card-' + staff.id; 
         
-        // 🌟 支援多選區域隱藏邏輯
-        if (!currentRegion.includes('All') && !currentRegion.includes(staffRegion)) {
-            card.style.display = 'none';
-        }
+        if (!currentRegion.includes('All') && !currentRegion.includes(staffRegion)) { card.style.display = 'none'; }
         
-        card.dataset.region = staffRegion; 
-        card.dataset.agentName = agentName; card.dataset.agentRate = agentRate; card.dataset.totalWorks = totalWorks; card.dataset.staffName = staff.name || "未填寫";
+        card.dataset.region = staffRegion; card.dataset.agentName = agentName; card.dataset.agentRate = agentRate; card.dataset.totalWorks = totalWorks; card.dataset.staffName = staff.name || "未填寫";
         card.style.background = '#fff'; card.style.borderRadius = '8px'; card.style.border = '1px solid #ccc'; card.style.overflowX = 'auto'; card.style.boxShadow = '0 2px 5px rgba(0,0,0,0.05)';
 
         let regionOptions = "";
         REGIONS.forEach(r => { const selected = (staffRegion === r) ? "selected" : ""; regionOptions += `<option value="${r}" ${selected}>${r}</option>`; });
-
         let roomBadge = staff.roomName ? `<span style="background:#2c3e50; color:#f1c40f; padding:2px 6px; border-radius:4px; font-size:12px; margin-right:5px; border: 1px solid #f1c40f;">${staff.roomName}</span>` : "";
         let displayName = staff.name || "未填寫";
 
-        let headerHtml = `
-            <div style="background:#f1c40f; padding:8px; display:flex; justify-content:space-between; align-items:center; min-width: 750px;">
-                <div style="font-size:16px; font-weight:bold; color:#e74c3c; display:flex; align-items:center; gap:5px; white-space: nowrap;">
-                    ${roomBadge} ${displayName}
-                    <button onclick="copySingleSettlementToExcel(${staff.id}, '${displayName}')" style="background:#27ae60; color:white; border:none; padding:4px 8px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:12px; margin-left:10px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">📊 複製Excel</button>
-                    <select onchange="updateStaffSettlement(${staff.id}, 'region', this.value)" ${disableAttr}
-                            style="font-size:12px; padding:2px; margin-left:5px; border-radius:4px; border:1px solid #aaa; ${lockBg}">
-                        ${regionOptions}
-                    </select>
-                </div>
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <button class="btn-circle ${paramBtnClass}" style="width:28px; height:28px; font-size:14px; ${paramBtnStyle} flex-shrink: 0; ${hideBtnStyle}" onclick="openStaffParamsModal(${staff.id})">⚙️</button>
-                    <button class="btn-circle" style="width:28px; height:28px; font-size:14px; background:#95a5a6; flex-shrink: 0; ${hideBtnStyle}" onclick="resetStaffSettings(${staff.id})" title="初始化設定">🔄</button>
-                    <input type="text" placeholder="經紀" value="${agentName}" onchange="updateStaffSettlement(${staff.id}, 'agentName', this.value)" ${disableAttr} style="width:50px; text-align:center; border:1px solid #aaa; border-radius:4px; font-weight:bold; color:#c0392b; ${lockBg}">
-                    <div style="display:flex; flex-direction:column; align-items:flex-end; font-size:10px; color:#2c3e50; line-height:1.1; white-space: nowrap;">
-                        <div>費率: <input type="number" value="${agentRate}" onchange="updateStaffSettlement(${staff.id}, 'agentRate', this.value)" ${disableAttr} style="width:40px; border:none; background:transparent; border-bottom:1px solid #aaa; text-align:right; ${lockBg}"></div>
-                        <div class="agent-fee-display" style="font-weight:bold; color:#d35400;">費用: $${staffAgentFee.toLocaleString()}</div>
-                    </div>
-                </div>
-            </div>
-            <table style="width: 100%; min-width: 750px; table-layout: fixed; font-size:14px; border-collapse:collapse;"> 
-                <thead style="background:#ecf0f1; border-bottom:1px solid #ccc; color:#555;">
-                    <tr>
-                        <th style="padding:8px 5px; text-align:left; width: 35%;">班表內容</th>
-                        <th style="width: 70px; color:#2980b9; text-align:center;">名稱</th>
-                        <th style="width: 55px; text-align:center;">阿姨</th>
-                        <th style="width: 65px; text-align:center;">收</th>
-                        <th style="width: 60px; text-align:center;">小姐</th>
-                        <th style="width: 60px; text-align:center;">結餘</th>
-                        <th style="width: 45px; text-align:center;">工數</th>
-                        <th style="width: auto; text-align:center;">備註</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
+        // 🌟 呼叫 Header Helper 組合表格頭部
+        let html = buildCardHeaderHTML({ staff, roomBadge, displayName, regionOptions, disableAttr, lockBg, paramBtnClass, paramBtnStyle, hideBtnStyle, agentName, agentRate, staffAgentFee });
 
+        // 🌟 呼叫 Row Helper 組合每一行資料
         results.forEach(row => {
-            if (row.isDateHeader) { headerHtml += `<tr style="background:#fdf2e9; border-bottom:1px solid #f39c12;"><td colspan="8" style="padding:6px 10px; font-weight:bold; color:#d35400; text-align:left; font-size:13px; letter-spacing:1px;">📅 ${row.rawLine}</td></tr>`; return; }
-            const auntClass = row.isAuntOverridden ? 'manual-text' : ''; const revClass = row.isRevenueOverridden ? 'manual-text' : ''; const missClass = row.isMissOverridden ? 'manual-text' : ''; const workClass = row.isWorkOverridden ? 'manual-text' : '';
-            const overrideData = staff.overrides && staff.overrides[row.index] ? staff.overrides[row.index] : {}; const noteText = overrideData.note || ""; 
-            const rowStyle = row.isError ? "background:#ffe6e6; border:2px solid #e74c3c;" : "border-bottom:1px solid #eee;";
-            const nameStyle = row.isError ? "color:#c0392b; font-weight:bold;" : "color:#2980b9; font-weight:bold; border-left:1px dashed #eee;";
-            const normalCellBg = row.isError ? 'transparent' : (isLocked ? '#f4f6f9' : '#f9f9f9');
-
-            headerHtml += `
-                <tr style="${rowStyle}">
-                    <td style="padding:8px 5px; word-break: break-word; white-space: normal; line-height: 1.4; color:#2c3e50;">${row.isError ? '⚠️ ' : ''}${row.rawLine}</td>
-                    <td style="text-align:center; font-size:14px; ${nameStyle}">${row.extractedName}</td>
-                    <td class="col-aunt editable-cell ${auntClass}" ${editAttr} onblur="saveOverride(${staff.id}, ${row.index}, 'aunt_disp', this)" style="text-align:center; font-size:15px; font-weight:bold; color:#2980b9; background:${normalCellBg}; border-left:1px dashed #eee;">${row.aunt_disp}</td>
-                    <td class="col-rev editable-cell ${revClass}" ${editAttr} onblur="saveOverride(${staff.id}, ${row.index}, 'revenue', this)" style="text-align:center; font-size:15px; font-weight:bold; color:#27ae60; background:${normalCellBg};">${row.revenue}</td>
-                    <td class="col-miss editable-cell ${missClass}" ${editAttr} onblur="saveOverride(${staff.id}, ${row.index}, 'total_miss', this)" style="text-align:center; color:#c0392b; background:${normalCellBg};">${row.total_miss}</td>
-                    <td class="col-bal" style="text-align:center; color:#555; font-weight:bold;">${row.balance}</td>
-                    <td class="col-work editable-cell ${workClass}" ${editAttr} onblur="saveOverride(${staff.id}, ${row.index}, 'work', this)" style="text-align:center; color:#d35400; font-weight:bold; background:${normalCellBg}; border-right:1px dashed #eee;">${row.work}</td>
-                    <td class="editable-cell" ${editAttr} onblur="saveOverride(${staff.id}, ${row.index}, 'note', this)" style="text-align:center; color:#888; background:${isLocked ? '#f4f6f9' : '#fff'}; font-size:12px; word-break: break-word; white-space: normal;">${noteText}</td>
-                </tr>
-            `;
+            if (row.isDateHeader) { 
+                html += `<tr style="background:#fdf2e9; border-bottom:1px solid #f39c12;"><td colspan="8" style="padding:6px 10px; font-weight:bold; color:#d35400; text-align:left; font-size:13px; letter-spacing:1px;">📅 ${row.rawLine}</td></tr>`; 
+                return; 
+            }
+            html += buildCardRowHTML({ staff, row, editAttr, isLocked });
         });
 
-        headerHtml += `
-                <tr class="footer-total" style="background:#fffcf5; border-top:2px solid #ddd;">
-                    <td colspan="2" style="text-align:right; font-weight:bold; padding:8px 10px;">總計:</td>
-                    <td style="text-align:center; font-weight:bold; color:#2980b9;">0</td><td style="text-align:center; font-weight:bold; color:#27ae60;">0</td><td style="text-align:center;">0</td><td style="text-align:center;">-</td><td style="text-align:center; color:#d35400; font-weight:bold;">0</td><td></td> 
-                </tr>
-                <tr style="background:#ffe6e6;">
-                    <td colspan="5" style="text-align:right; font-size:13px; font-weight:bold; color:#c0392b; padding:8px 5px;">雜支/飯錢:</td>
-                    <td style="text-align:center; padding:5px;">
-                        <input class="input-expense" type="number" value="${manualExpense}" onchange="updateStaffSettlement(${staff.id}, 'manualExpense', this.value)" ${disableAttr} style="width:65px; text-align:center; color:#c0392b; font-weight:bold; border:1px solid #e74c3c; border-radius:4px; padding:4px; background:${isLocked ? 'transparent' : '#fff'}; ${lockBg}">
-                    </td><td colspan="2"></td>
-                </tr>
-                <tr style="background:#2c3e50; color:white; font-weight:bold;">
-                    <td colspan="5" style="text-align:right; padding:8px 5px; font-size:13px;">修正後結餘:</td>
-                    <td class="final-balance" style="text-align:center; font-size:16px; color:#f1c40f;">0</td><td colspan="2"></td>
-                </tr>
-            </tbody></table>
-        `;
-        card.innerHTML = headerHtml; container.appendChild(card);
+        // 🌟 呼叫 Footer Helper 組合表格尾部
+        html += buildCardFooterHTML({ staff, manualExpense, disableAttr, lockBg, isLocked });
+        
+        card.innerHTML = html; container.appendChild(card);
     });
 
     updateTotalsFromDOM(); 
@@ -248,37 +186,16 @@ function updateTotalsFromDOM() {
         const staffAgentFee = card_total_work * agentRate; 
         const feeDisplay = card.querySelector('.agent-fee-display'); if(feeDisplay) feeDisplay.innerText = `費用: $${staffAgentFee.toLocaleString()}`;
 
-        // 1. 加總到：全店總額
-        globalData.rev += final_bal;
-        globalData.aunt += (card_total_aunt_pts * 100);
-        globalData.works += card_total_work;
-        globalData.agent += staffAgentFee;
-        if(agentName) {
-            if(!globalData.map[agentName]) globalData.map[agentName] = 0;
-            globalData.map[agentName] += staffAgentFee;
-        }
+        globalData.rev += final_bal; globalData.aunt += (card_total_aunt_pts * 100); globalData.works += card_total_work; globalData.agent += staffAgentFee;
+        if(agentName) { if(!globalData.map[agentName]) globalData.map[agentName] = 0; globalData.map[agentName] += staffAgentFee; }
 
-        // 2. 加總到：專屬區域
-        regionData[region].revenue += final_bal;
-        regionData[region].aunt += (card_total_aunt_pts * 100);
-        regionData[region].works += card_total_work;
-        regionData[region].agentTotal += staffAgentFee;
-        if(agentName) {
-            if(!regionData[region].agentMap[agentName]) regionData[region].agentMap[agentName] = 0;
-            regionData[region].agentMap[agentName] += staffAgentFee;
-        }
+        regionData[region].revenue += final_bal; regionData[region].aunt += (card_total_aunt_pts * 100); regionData[region].works += card_total_work; regionData[region].agentTotal += staffAgentFee;
+        if(agentName) { if(!regionData[region].agentMap[agentName]) regionData[region].agentMap[agentName] = 0; regionData[region].agentMap[agentName] += staffAgentFee; }
         regionData[region].profit += (final_bal - (card_total_aunt_pts * 100) - staffAgentFee);
 
-        // 3. 加總到：使用者目前畫面上看到的
         if (isCardVisible) {
-            currentViewData.rev += final_bal;
-            currentViewData.aunt += (card_total_aunt_pts * 100);
-            currentViewData.works += card_total_work;
-            currentViewData.agent += staffAgentFee;
-            if(agentName) {
-                if(!currentViewData.map[agentName]) currentViewData.map[agentName] = 0;
-                currentViewData.map[agentName] += staffAgentFee;
-            }
+            currentViewData.rev += final_bal; currentViewData.aunt += (card_total_aunt_pts * 100); currentViewData.works += card_total_work; currentViewData.agent += staffAgentFee;
+            if(agentName) { if(!currentViewData.map[agentName]) currentViewData.map[agentName] = 0; currentViewData.map[agentName] += staffAgentFee; }
         }
     });
 
@@ -290,9 +207,7 @@ function updateTotalsFromDOM() {
     document.getElementById('total_works_summary').innerText = currentViewData.works.toLocaleString();
 
     let agent_summary_html = "";
-    for (const [name, fee] of Object.entries(currentViewData.map)) {
-        agent_summary_html += `<div>${name}: $${fee.toLocaleString()}</div>`; 
-    }
+    for (const [name, fee] of Object.entries(currentViewData.map)) { agent_summary_html += `<div>${name}: $${fee.toLocaleString()}</div>`; }
     document.getElementById('agent_fee_summary').innerHTML = agent_summary_html || "無";
 
     const dateStr = document.getElementById('dateInput').value;
@@ -334,7 +249,6 @@ function copyDailyReport() {
         staffDetails += `${name} ${balance}\n`;
     });
 
-    // 🌟 升級：多區報表名字組合
     const regionText = currentRegion.includes('All') ? '' : ` (${currentRegion.join(' + ')})`; 
     const reportText = `${dateStr}${regionText}\n總收 ${totalRev}\n---------------------\n阿姨 ${totalAunt}\n經紀 ${totalAgent}\n---------------------\n${staffDetails.trim()}\n===============\n盈餘 ${totalProfit}`;
     const previewBox = document.getElementById('dailyReportPreview'); if(previewBox) previewBox.value = reportText;
@@ -347,7 +261,6 @@ function copyAuntText() {
     navigator.clipboard.writeText(text).then(() => { showToast("✅ 已複製！請手動填寫日期"); }).catch(() => { showToast("❌ 複製失敗"); });
 }
 
-// 🌟 升級：複製單人員表格到Excel (14號字 + 全粗體 + 名稱欄純藍色)
 window.copySingleSettlementToExcel = async function(staffId, staffName) {
     const card = document.getElementById('settle-card-' + staffId);
     if (!card) return;
@@ -374,13 +287,8 @@ window.copySingleSettlementToExcel = async function(staffId, staffName) {
                 const cellText = td.innerText;
                 const isModified = td.classList.contains('manual-text');
                 
-                // 預設為黑色，手動修改過為紫色
                 let cellColor = isModified ? '#8e44ad' : 'black'; 
-                
-                // 🌟 新增判斷：如果是第 1 欄 (名稱)，強制設定為「純藍色」
-                if (i === 1) {
-                    cellColor = '#0000FF'; 
-                }
+                if (i === 1) { cellColor = '#0000FF'; }
 
                 excelHtml += `<td style="color: ${cellColor}; font-weight: bold; font-size: 14pt; text-align: center;">${cellText}</td>`;
             }
@@ -407,3 +315,87 @@ window.copySingleSettlementToExcel = async function(staffId, staffName) {
         if(successful) showToast(`✅ 已複製 4 欄純資料！(14號粗體 + 藍色名字)`); else showToast("❌ 複製失敗");
     }
 };
+
+// ==========================================
+// 🌟 版面與邏輯分離：專門印出 HTML 的小幫手們
+// ==========================================
+
+function buildCardHeaderHTML(p) {
+    return `
+        <div style="background:#f1c40f; padding:8px; display:flex; justify-content:space-between; align-items:center; min-width: 750px;">
+            <div style="font-size:16px; font-weight:bold; color:#e74c3c; display:flex; align-items:center; gap:5px; white-space: nowrap;">
+                ${p.roomBadge} ${p.displayName}
+                <button onclick="copySingleSettlementToExcel(${p.staff.id}, '${p.displayName}')" style="background:#27ae60; color:white; border:none; padding:4px 8px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:12px; margin-left:10px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">📊 複製Excel</button>
+                <select onchange="updateStaffSettlement(${p.staff.id}, 'region', this.value)" ${p.disableAttr}
+                        style="font-size:12px; padding:2px; margin-left:5px; border-radius:4px; border:1px solid #aaa; ${p.lockBg}">
+                    ${p.regionOptions}
+                </select>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <button class="btn-circle ${p.paramBtnClass}" style="width:28px; height:28px; font-size:14px; ${p.paramBtnStyle} flex-shrink: 0; ${p.hideBtnStyle}" onclick="openStaffParamsModal(${p.staff.id})">⚙️</button>
+                <button class="btn-circle" style="width:28px; height:28px; font-size:14px; background:#95a5a6; flex-shrink: 0; ${p.hideBtnStyle}" onclick="resetStaffSettings(${p.staff.id})" title="初始化設定">🔄</button>
+                <input type="text" placeholder="經紀" value="${p.agentName}" onchange="updateStaffSettlement(${p.staff.id}, 'agentName', this.value)" ${p.disableAttr} style="width:50px; text-align:center; border:1px solid #aaa; border-radius:4px; font-weight:bold; color:#c0392b; ${p.lockBg}">
+                <div style="display:flex; flex-direction:column; align-items:flex-end; font-size:10px; color:#2c3e50; line-height:1.1; white-space: nowrap;">
+                    <div>費率: <input type="number" value="${p.agentRate}" onchange="updateStaffSettlement(${p.staff.id}, 'agentRate', this.value)" ${p.disableAttr} style="width:40px; border:none; background:transparent; border-bottom:1px solid #aaa; text-align:right; ${p.lockBg}"></div>
+                    <div class="agent-fee-display" style="font-weight:bold; color:#d35400;">費用: $${p.staffAgentFee.toLocaleString()}</div>
+                </div>
+            </div>
+        </div>
+        <table style="width: 100%; min-width: 750px; table-layout: fixed; font-size:14px; border-collapse:collapse;"> 
+            <thead style="background:#ecf0f1; border-bottom:1px solid #ccc; color:#555;">
+                <tr>
+                    <th style="padding:8px 5px; text-align:left; width: 35%;">班表內容</th>
+                    <th style="width: 70px; color:#2980b9; text-align:center;">名稱</th>
+                    <th style="width: 55px; text-align:center;">阿姨</th>
+                    <th style="width: 65px; text-align:center;">收</th>
+                    <th style="width: 60px; text-align:center;">小姐</th>
+                    <th style="width: 60px; text-align:center;">結餘</th>
+                    <th style="width: 45px; text-align:center;">工數</th>
+                    <th style="width: auto; text-align:center;">備註</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+}
+
+function buildCardRowHTML(p) {
+    const row = p.row; const staff = p.staff;
+    const auntClass = row.isAuntOverridden ? 'manual-text' : ''; const revClass = row.isRevenueOverridden ? 'manual-text' : ''; const missClass = row.isMissOverridden ? 'manual-text' : ''; const workClass = row.isWorkOverridden ? 'manual-text' : '';
+    const overrideData = staff.overrides && staff.overrides[row.index] ? staff.overrides[row.index] : {}; const noteText = overrideData.note || ""; 
+    const rowStyle = row.isError ? "background:#ffe6e6; border:2px solid #e74c3c;" : "border-bottom:1px solid #eee;";
+    const nameStyle = row.isError ? "color:#c0392b; font-weight:bold;" : "color:#2980b9; font-weight:bold; border-left:1px dashed #eee;";
+    const normalCellBg = row.isError ? 'transparent' : (p.isLocked ? '#f4f6f9' : '#f9f9f9');
+
+    return `
+        <tr style="${rowStyle}">
+            <td style="padding:8px 5px; word-break: break-word; white-space: normal; line-height: 1.4; color:#2c3e50;">${row.isError ? '⚠️ ' : ''}${row.rawLine}</td>
+            <td style="text-align:center; font-size:14px; ${nameStyle}">${row.extractedName}</td>
+            <td class="col-aunt editable-cell ${auntClass}" ${p.editAttr} onblur="saveOverride(${staff.id}, ${row.index}, 'aunt_disp', this)" style="text-align:center; font-size:15px; font-weight:bold; color:#2980b9; background:${normalCellBg}; border-left:1px dashed #eee;">${row.aunt_disp}</td>
+            <td class="col-rev editable-cell ${revClass}" ${p.editAttr} onblur="saveOverride(${staff.id}, ${row.index}, 'revenue', this)" style="text-align:center; font-size:15px; font-weight:bold; color:#27ae60; background:${normalCellBg};">${row.revenue}</td>
+            <td class="col-miss editable-cell ${missClass}" ${p.editAttr} onblur="saveOverride(${staff.id}, ${row.index}, 'total_miss', this)" style="text-align:center; color:#c0392b; background:${normalCellBg};">${row.total_miss}</td>
+            <td class="col-bal" style="text-align:center; color:#555; font-weight:bold;">${row.balance}</td>
+            <td class="col-work editable-cell ${workClass}" ${p.editAttr} onblur="saveOverride(${staff.id}, ${row.index}, 'work', this)" style="text-align:center; color:#d35400; font-weight:bold; background:${normalCellBg}; border-right:1px dashed #eee;">${row.work}</td>
+            <td class="editable-cell" ${p.editAttr} onblur="saveOverride(${staff.id}, ${row.index}, 'note', this)" style="text-align:center; color:#888; background:${p.isLocked ? '#f4f6f9' : '#fff'}; font-size:12px; word-break: break-word; white-space: normal;">${noteText}</td>
+        </tr>
+    `;
+}
+
+function buildCardFooterHTML(p) {
+    return `
+            <tr class="footer-total" style="background:#fffcf5; border-top:2px solid #ddd;">
+                <td colspan="2" style="text-align:right; font-weight:bold; padding:8px 10px;">總計:</td>
+                <td style="text-align:center; font-weight:bold; color:#2980b9;">0</td><td style="text-align:center; font-weight:bold; color:#27ae60;">0</td><td style="text-align:center;">0</td><td style="text-align:center;">-</td><td style="text-align:center; color:#d35400; font-weight:bold;">0</td><td></td> 
+            </tr>
+            <tr style="background:#ffe6e6;">
+                <td colspan="5" style="text-align:right; font-size:13px; font-weight:bold; color:#c0392b; padding:8px 5px;">雜支/飯錢:</td>
+                <td style="text-align:center; padding:5px;">
+                    <input class="input-expense" type="number" value="${p.manualExpense}" onchange="updateStaffSettlement(${p.staff.id}, 'manualExpense', this.value)" ${p.disableAttr} style="width:65px; text-align:center; color:#c0392b; font-weight:bold; border:1px solid #e74c3c; border-radius:4px; padding:4px; background:${p.isLocked ? 'transparent' : '#fff'}; ${p.lockBg}">
+                </td><td colspan="2"></td>
+            </tr>
+            <tr style="background:#2c3e50; color:white; font-weight:bold;">
+                <td colspan="5" style="text-align:right; padding:8px 5px; font-size:13px;">修正後結餘:</td>
+                <td class="final-balance" style="text-align:center; font-size:16px; color:#f1c40f;">0</td><td colspan="2"></td>
+            </tr>
+        </tbody></table>
+    `;
+}

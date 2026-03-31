@@ -44,21 +44,14 @@ function showToast(msg) {
     }
 }
 
-// 🌟 確保保留了自動發放顏色的功能
 function getRegionColor(regionName) {
     if (typeof REGIONS === 'undefined') return "#95a5a6";
     let idx = REGIONS.indexOf(regionName);
     if (idx === -1) return "#95a5a6"; 
     
     const REGION_COLORS = [
-        "#3498db", // 藍色
-        "#9b59b6", // 紫色
-        "#e67e22", // 橘色
-        "#1abc9c", // 藍綠色
-        "#e74c3c", // 紅色
-        "#34495e", // 深藍灰
-        "#f39c12", // 亮橘黃
-        "#2ecc71"  // 綠色
+        "#3498db", "#9b59b6", "#e67e22", "#1abc9c", 
+        "#e74c3c", "#34495e", "#f39c12", "#2ecc71"
     ];
     return REGION_COLORS[idx % REGION_COLORS.length];
 }
@@ -76,32 +69,49 @@ function playLoudAlarm() {
                 alarmAudio.currentTime = 0; 
             }, 4000); 
         })
-        .catch(error => {
-            console.warn("音效播放失敗 (可能瀏覽器阻擋，需先點擊頁面):", error);
-        });
+        .catch(error => { console.warn("音效播放失敗:", error); });
     }
 }
 
 function sendSystemNotification(title, body) {
     if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(title, {
-            body: body,
-            requireInteraction: true 
-        });
+        new Notification(title, { body: body, requireInteraction: true });
     }
 }
 
 function requestNotificationPermission() {
     if ("Notification" in window && Notification.permission !== "granted") {
         Notification.requestPermission().then(permission => {
-            if (permission === "granted") {
-                showToast("✅ 已開啟通知權限");
-                playLoudAlarm(); 
-            }
+            if (permission === "granted") { showToast("✅ 已開啟通知權限"); playLoudAlarm(); }
         });
     } else {
-        alarmAudio.play().then(() => {
-            setTimeout(() => alarmAudio.pause(), 100);
-        }).catch(() => {});
+        alarmAudio.play().then(() => { setTimeout(() => alarmAudio.pause(), 100); }).catch(() => {});
     }
+}
+
+// 🌟 優化與重構 第一步：統一抓取全局的算錢參數表
+function getGlobalPricingTables() {
+    const getGlobalVal = (id) => { const el = document.getElementById(id); return el ? (parseInt(el.value) || 0) : 0; };
+    const globalCommTable = { 
+        "40-1": getGlobalVal('base_40_1'), 
+        "60-1": getGlobalVal('base_60_1'), 
+        "60-2": getGlobalVal('base_60_2'), 
+        "120-3": getGlobalVal('base_120_3'), 
+        "240-3": getGlobalVal('base_240_3') 
+    };
+    const globalCostTable = { 
+        "40-1": getGlobalVal('cost_40_1'), 
+        "60-1": getGlobalVal('cost_60_1'), 
+        "60-2": getGlobalVal('cost_60_2'), 
+        "120-3": getGlobalVal('cost_120_3'), 
+        "240-3": getGlobalVal('cost_240_3') 
+    };
+    const globalWorkTable = { 
+        "40-1": typeof WORK_UNIT_TABLE !== 'undefined' ? (WORK_UNIT_TABLE[40] || 0) : 1, 
+        "60-1": typeof WORK_UNIT_TABLE !== 'undefined' ? (WORK_UNIT_TABLE[60] || 0) : 1, 
+        "60-2": typeof WORK_UNIT_TABLE !== 'undefined' ? (WORK_UNIT_TABLE[60] || 0) : 1, 
+        "120-3": typeof WORK_UNIT_TABLE !== 'undefined' ? (WORK_UNIT_TABLE[120] || 0) : 2, 
+        "240-3": typeof WORK_UNIT_TABLE !== 'undefined' ? (WORK_UNIT_TABLE[240] || 0) : 3 
+    };
+    return { globalCommTable, globalCostTable, globalWorkTable };
 }

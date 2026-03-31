@@ -7,14 +7,10 @@ function renderSidebar() {
     leftContent.innerHTML = ''; 
     staffData.forEach((staff, index) => { 
         const staffRegion = staff.region || (REGIONS.length > 0 ? REGIONS[0] : "未分類");
-        
-        // 🌟 升級：支援多選區域隱藏邏輯
         if (!currentRegion.includes('All') && !currentRegion.includes(staffRegion)) return;
-
         if (showWorkingOnly && staff.attendance === false) return;
 
         const regionColor = getRegionColor(staffRegion);
-
         let regionOptions = "";
         REGIONS.forEach(r => {
             const selected = (staffRegion === r) ? "selected" : "";
@@ -25,7 +21,6 @@ function renderSidebar() {
         div.className = 'staff-card'; 
         div.dataset.staffId = staff.id; 
         if (staff.height) div.style.height = staff.height + 'px'; 
-        
         div.style.borderLeft = `5px solid ${regionColor}`;
         
         const isAttending = staff.attendance !== false; 
@@ -35,22 +30,17 @@ function renderSidebar() {
             ? `<span onclick="copySingleAvailability(${staff.id})" style="cursor:pointer; background:${badgeBgColor}; color:white; padding:4px 6px; border-radius:4px; font-size:12px; margin-right:4px; font-weight:bold; white-space:nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.3);" title="點擊複製空檔">${staff.roomName}</span>` 
             : `<span onclick="copySingleAvailability(${staff.id})" style="cursor:pointer; background:${badgeBgColor}; color:white; padding:4px 6px; border-radius:4px; font-size:11px; margin-right:4px; font-weight:bold; box-shadow: 0 1px 3px rgba(0,0,0,0.3);" title="點擊複製空檔">📋複製</span>`;
 
-        div.innerHTML = `
-            <div class="staff-header" style="display:flex; align-items:center; padding-right:5px; padding-top:2px;">
-                <div class="idx-badge">${index + 1}</div>
-                ${roomBadge}
-                <input class="staff-name" placeholder="姓名" value="${staff.name || ''}" onchange="updateStaffName(${staff.id}, this.value)" style="flex:1; min-width:40px; padding:2px; margin-right:4px;">
-                <select class="region-select-mini" onchange="updateStaffRegion(${staff.id}, this.value)" style="max-width:55px; background-color:${regionColor}; color:white; border:none; border-radius:4px; padding:2px; font-weight:bold;">${regionOptions}</select>
-            </div>
-            <div class="schedule-text-display" onclick="openEditModal(${staff.id})">${staff.content || '<span style="color:#ccc">編輯...</span>'}</div>
-            
-            <button class="btn-floating-paste" onclick="quickPaste(${staff.id})" title="一鍵貼上班表">📥</button>
-            
-            <div class="row-resizer" 
-                 onmousedown="initRowResize(event, ${staff.id})" 
-                 ontouchstart="initRowResize(event, ${staff.id})">
-            </div>
-        `; 
+        // 🌟 重構：使用 Helper 組合左側名單的 HTML
+        div.innerHTML = buildStaffCardHTML({
+            index: index,
+            staffId: staff.id,
+            staffName: staff.name || '',
+            staffContent: staff.content || '<span style="color:#ccc">編輯...</span>',
+            roomBadge: roomBadge,
+            regionOptions: regionOptions,
+            regionColor: regionColor
+        });
+        
         leftContent.appendChild(div); 
     }); 
 }
@@ -76,25 +66,25 @@ function renderTracksOnly() {
     container.style.width = totalWidth + 'px'; 
     if(gridBgLine) gridBgLine.style.width = totalWidth + 'px'; 
     
-    ruler.innerHTML = ''; 
+    let rulerHTML = ''; 
     const gridBgContent = []; 
     
     for (let h = openH; h <= closeH; h++) { 
         let left = (h * 60 - startOfDay) * PX_PER_MIN; 
         let displayH = h >= 24 ? h - 24 : h; 
         let displayHStr = displayH < 10 ? "0" + displayH : displayH;
-        ruler.innerHTML += `<div class="hour-mark" style="left:${left}px;">${displayHStr}</div>`; 
-        gridBgContent.push(`<div class="v-line" style="left:${left}px;"></div>`); 
+        
+        // 🌟 重構：使用 Helper 畫出時間刻度與背景線
+        rulerHTML += buildRulerMarkHTML(left, displayHStr); 
+        gridBgContent.push(buildGridLineHTML(left)); 
     } 
     
-    container.innerHTML = `<div class="grid-lines" id="gridBg" style="width: ${totalWidth}px;">${gridBgContent.join('')}</div><div id="currentTimeLine" class="current-time-line"></div>`; 
+    ruler.innerHTML = rulerHTML;
+    container.innerHTML = buildTrackContainerHTML(totalWidth, gridBgContent.join('')); 
     
     staffData.forEach(staff => { 
         const staffRegion = staff.region || (REGIONS.length > 0 ? REGIONS[0] : "未分類");
-        
-        // 🌟 升級：支援多選區域隱藏邏輯
         if (!currentRegion.includes('All') && !currentRegion.includes(staffRegion)) return;
-
         if (showWorkingOnly && staff.attendance === false) return;
 
         const trackDiv = document.createElement('div'); 
@@ -129,9 +119,7 @@ function renderSingleTrack(container, content, staffId, startOfDay, endOfDay) {
         const isDateLine = /^[\d./-]+\s*(?:\([^)]+\))?$/.test(trimmedLine) && trimmedLine.length < 15;
         if (isDateLine) {
             const mMatch = trimmedLine.match(/(\d{1,2})[\/\-\.](\d{1,2})/);
-            if (mMatch) {
-                activeBlockDate = mMatch[1].padStart(2, '0') + '/' + mMatch[2].padStart(2, '0');
-            }
+            if (mMatch) { activeBlockDate = mMatch[1].padStart(2, '0') + '/' + mMatch[2].padStart(2, '0'); }
             return; 
         }
 
@@ -183,7 +171,8 @@ function renderSingleTrack(container, content, staffId, startOfDay, endOfDay) {
             if (gap >= 10) { 
                 let startStr = formatTime(currentCursor); let endStr = formatTime(task.start); 
                 let durationStr = formatDuration(gap); 
-                let label = `<b>${durationStr}</b><div style="font-size:10px; margin-top:1px;">${startStr}-${endStr}</div>`; 
+                // 🌟 重構：使用 Helper 組合空檔字串
+                let label = buildFreeBlockLabelHTML(durationStr, startStr, endStr); 
                 createBlock(container, currentCursor, task.start, startOfDay, 'free', label, staffId); 
             } 
         } 
@@ -197,7 +186,7 @@ function renderSingleTrack(container, content, staffId, startOfDay, endOfDay) {
         if (gap >= 10) { 
             let startStr = formatTime(currentCursor); let endStr = formatTime(endOfDay); 
             let durationStr = formatDuration(gap); 
-            let label = `<b>${durationStr}</b><div style="font-size:10px; margin-top:1px;">${startStr}-${endStr}</div>`; 
+            let label = buildFreeBlockLabelHTML(durationStr, startStr, endStr); 
             createBlock(container, currentCursor, endOfDay, startOfDay, 'free', label, staffId); 
         }
     }
@@ -227,7 +216,6 @@ function createBlock(container, start, end, offsetStart, type, content, staffId,
             if(outTime) div.dataset.outTime = outTime; 
         } 
     } 
-
     container.appendChild(div); 
 }
 
@@ -266,9 +254,7 @@ function updateTimeLineAndClock() {
 
     if (s === 0 && lastCheckedTime !== timeString) {
         lastCheckedTime = timeString;
-        if (isToday) {
-            checkScheduleAlerts(h * 60 + m); 
-        }
+        if (isToday) { checkScheduleAlerts(h * 60 + m); }
     }
 }
 
@@ -326,7 +312,15 @@ function checkScheduleAlerts(currentMinutes) {
     });
 }
 
+let renderScheduleTimeout = null;
 function renderScheduleAll() { 
+    if (renderScheduleTimeout) clearTimeout(renderScheduleTimeout);
+    renderScheduleTimeout = setTimeout(() => {
+        executeRenderScheduleAll();
+    }, 150);
+}
+
+function executeRenderScheduleAll() {
     renderSidebar(); 
     requestAnimationFrame(renderTracksOnly); 
 }
@@ -430,4 +424,38 @@ async function quickPaste(staffId) {
             showToast(`✅ 已手動貼上班表！`);
         }
     }
+}
+
+// ==========================================
+// 🌟 版面與邏輯分離：專門印出 HTML 的小幫手們 (排班表)
+// ==========================================
+
+function buildStaffCardHTML(p) {
+    return `
+        <div class="staff-header" style="display:flex; align-items:center; padding-right:5px; padding-top:2px;">
+            <div class="idx-badge">${p.index + 1}</div>
+            ${p.roomBadge}
+            <input class="staff-name" placeholder="姓名" value="${p.staffName}" onchange="updateStaffName(${p.staffId}, this.value)" style="flex:1; min-width:40px; padding:2px; margin-right:4px;">
+            <select class="region-select-mini" onchange="updateStaffRegion(${p.staffId}, this.value)" style="max-width:55px; background-color:${p.regionColor}; color:white; border:none; border-radius:4px; padding:2px; font-weight:bold;">${p.regionOptions}</select>
+        </div>
+        <div class="schedule-text-display" onclick="openEditModal(${p.staffId})">${p.staffContent}</div>
+        <button class="btn-floating-paste" onclick="quickPaste(${p.staffId})" title="一鍵貼上班表">📥</button>
+        <div class="row-resizer" onmousedown="initRowResize(event, ${p.staffId})" ontouchstart="initRowResize(event, ${p.staffId})"></div>
+    `;
+}
+
+function buildRulerMarkHTML(left, displayHStr) {
+    return `<div class="hour-mark" style="left:${left}px;">${displayHStr}</div>`;
+}
+
+function buildGridLineHTML(left) {
+    return `<div class="v-line" style="left:${left}px;"></div>`;
+}
+
+function buildTrackContainerHTML(totalWidth, gridBgContent) {
+    return `<div class="grid-lines" id="gridBg" style="width: ${totalWidth}px;">${gridBgContent}</div><div id="currentTimeLine" class="current-time-line"></div>`;
+}
+
+function buildFreeBlockLabelHTML(durationStr, startStr, endStr) {
+    return `<b>${durationStr}</b><div style="font-size:10px; margin-top:1px;">${startStr}-${endStr}</div>`;
 }
