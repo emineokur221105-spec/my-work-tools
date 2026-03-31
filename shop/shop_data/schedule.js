@@ -30,7 +30,6 @@ function renderSidebar() {
             ? `<span onclick="copySingleAvailability(${staff.id})" style="cursor:pointer; background:${badgeBgColor}; color:white; padding:4px 6px; border-radius:4px; font-size:12px; margin-right:4px; font-weight:bold; white-space:nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.3);" title="點擊複製空檔">${staff.roomName}</span>` 
             : `<span onclick="copySingleAvailability(${staff.id})" style="cursor:pointer; background:${badgeBgColor}; color:white; padding:4px 6px; border-radius:4px; font-size:11px; margin-right:4px; font-weight:bold; box-shadow: 0 1px 3px rgba(0,0,0,0.3);" title="點擊複製空檔">📋複製</span>`;
 
-        // 🌟 重構：使用 Helper 組合左側名單的 HTML
         div.innerHTML = buildStaffCardHTML({
             index: index,
             staffId: staff.id,
@@ -74,7 +73,6 @@ function renderTracksOnly() {
         let displayH = h >= 24 ? h - 24 : h; 
         let displayHStr = displayH < 10 ? "0" + displayH : displayH;
         
-        // 🌟 重構：使用 Helper 畫出時間刻度與背景線
         rulerHTML += buildRulerMarkHTML(left, displayHStr); 
         gridBgContent.push(buildGridLineHTML(left)); 
     } 
@@ -171,7 +169,6 @@ function renderSingleTrack(container, content, staffId, startOfDay, endOfDay) {
             if (gap >= 10) { 
                 let startStr = formatTime(currentCursor); let endStr = formatTime(task.start); 
                 let durationStr = formatDuration(gap); 
-                // 🌟 重構：使用 Helper 組合空檔字串
                 let label = buildFreeBlockLabelHTML(durationStr, startStr, endStr); 
                 createBlock(container, currentCursor, task.start, startOfDay, 'free', label, staffId); 
             } 
@@ -201,8 +198,19 @@ function createBlock(container, start, end, offsetStart, type, content, staffId,
     div.style.left = left + 'px'; 
     div.style.width = Math.max(width - 2, 2) + 'px'; 
     
+    // 🌟 獲取該人員專屬的區域顏色
+    const staff = staffData.find(s => s.id === staffId);
+    const staffRegion = staff ? (staff.region || (REGIONS.length > 0 ? REGIONS[0] : "未分類")) : "未分類";
+    const regionColor = getRegionColor(staffRegion);
+
     if (type === 'free') { 
         div.innerHTML = content; 
+        
+        // 🌟 給空檔區塊加上區域專屬的顏色：背景是 20% 透明度 (+33)，邊框是實色！
+        div.style.backgroundColor = regionColor + "33"; 
+        div.style.borderColor = regionColor;
+        div.style.color = "#2c3e50"; // 字體保持深灰色確保易讀性
+        
     } else { 
         div.innerText = content; 
         if (type === 'work') { 
