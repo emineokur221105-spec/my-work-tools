@@ -7,9 +7,10 @@ function renderSidebar() {
     leftContent.innerHTML = ''; 
     staffData.forEach((staff, index) => { 
         const staffRegion = staff.region || (REGIONS.length > 0 ? REGIONS[0] : "未分類");
-        if (currentRegion !== 'All' && staffRegion !== currentRegion) return;
+        
+        // 🌟 升級：支援多選區域隱藏邏輯
+        if (!currentRegion.includes('All') && !currentRegion.includes(staffRegion)) return;
 
-        // 🌟 新增這行：如果開啟了篩選，且該人員沒上班，就不畫他的左側名單
         if (showWorkingOnly && staff.attendance === false) return;
 
         const regionColor = getRegionColor(staffRegion);
@@ -34,7 +35,6 @@ function renderSidebar() {
             ? `<span onclick="copySingleAvailability(${staff.id})" style="cursor:pointer; background:${badgeBgColor}; color:white; padding:4px 6px; border-radius:4px; font-size:12px; margin-right:4px; font-weight:bold; white-space:nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.3);" title="點擊複製空檔">${staff.roomName}</span>` 
             : `<span onclick="copySingleAvailability(${staff.id})" style="cursor:pointer; background:${badgeBgColor}; color:white; padding:4px 6px; border-radius:4px; font-size:11px; margin-right:4px; font-weight:bold; box-shadow: 0 1px 3px rgba(0,0,0,0.3);" title="點擊複製空檔">📋複製</span>`;
 
-        // 🌟 已經將前標輸入框從這裡移除了，版面變得更乾淨
         div.innerHTML = `
             <div class="staff-header" style="display:flex; align-items:center; padding-right:5px; padding-top:2px;">
                 <div class="idx-badge">${index + 1}</div>
@@ -91,9 +91,10 @@ function renderTracksOnly() {
     
     staffData.forEach(staff => { 
         const staffRegion = staff.region || (REGIONS.length > 0 ? REGIONS[0] : "未分類");
-        if (currentRegion !== 'All' && staffRegion !== currentRegion) return;
+        
+        // 🌟 升級：支援多選區域隱藏邏輯
+        if (!currentRegion.includes('All') && !currentRegion.includes(staffRegion)) return;
 
-        // 🌟 新增這行：同步隱藏他的右側時間軸格子
         if (showWorkingOnly && staff.attendance === false) return;
 
         const trackDiv = document.createElement('div'); 

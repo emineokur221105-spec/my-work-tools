@@ -24,7 +24,7 @@ const WORK_UNIT_TABLE = {40: 1, 50: 1, 60: 1, 120: 2, 200: 3, 240: 3};
 const AUNT_EXTRA_NAMES = ["顏同", "有菜", "澄澄", "姚貴", "曼達", "阿鳴"]; 
 
 let REGIONS = []; 
-let currentRegion = "All"; 
+let currentRegion = ["All"]; // 🌟 升級：改為陣列支援多選
 let roomConfig = {};
 let regionPrefixes = {}; // 🌟 新增：用來記憶每個區域的「專屬複製前標」
 let staffData = [];

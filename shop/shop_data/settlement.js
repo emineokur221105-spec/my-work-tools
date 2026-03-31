@@ -107,12 +107,12 @@ function renderSettlementTable() {
         const card = document.createElement('div'); card.className = 'staff-card-settle';
         card.id = 'settle-card-' + staff.id; 
         
-        // 🌟 核心修改：如果是其他區域，我們改用隱藏(display:none)而不是不渲染，確保能計算到該區總額！
-        if (currentRegion !== 'All' && staffRegion !== currentRegion) {
+        // 🌟 支援多選區域隱藏邏輯
+        if (!currentRegion.includes('All') && !currentRegion.includes(staffRegion)) {
             card.style.display = 'none';
         }
         
-        card.dataset.region = staffRegion; // 記錄這張卡片屬於哪個區域
+        card.dataset.region = staffRegion; 
         card.dataset.agentName = agentName; card.dataset.agentRate = agentRate; card.dataset.totalWorks = totalWorks; card.dataset.staffName = staff.name || "未填寫";
         card.style.background = '#fff'; card.style.borderRadius = '8px'; card.style.border = '1px solid #ccc'; card.style.overflowX = 'auto'; card.style.boxShadow = '0 2px 5px rgba(0,0,0,0.05)';
 
@@ -204,7 +204,6 @@ function renderSettlementTable() {
 }
 
 function updateTotalsFromDOM() {
-    // 🌟 全新升級：一次收集所有區域的資料，並且分開儲存！
     let globalData = { rev: 0, aunt: 0, agent: 0, works: 0, map: {} };
     let currentViewData = { rev: 0, aunt: 0, agent: 0, works: 0, map: {} };
     let regionData = {};
@@ -217,7 +216,7 @@ function updateTotalsFromDOM() {
         if(!regionData[region]) regionData[region] = { revenue: 0, aunt: 0, agentTotal: 0, works: 0, profit: 0, agentMap: {} };
 
         let card_total_aunt_pts = 0; let card_total_rev = 0; let card_total_miss = 0; let card_total_bal = 0; let card_total_work = 0; 
-        const isCardVisible = card.style.display !== 'none'; // 判斷此卡片目前有沒有顯示在畫面上
+        const isCardVisible = card.style.display !== 'none';
 
         card.querySelectorAll('tbody tr:not(.footer-total)').forEach(row => { 
             const getVal = (cls) => {
@@ -270,7 +269,7 @@ function updateTotalsFromDOM() {
         }
         regionData[region].profit += (final_bal - (card_total_aunt_pts * 100) - staffAgentFee);
 
-        // 3. 加總到：使用者目前畫面上看到的 (讓上方資料卡數字正確顯示)
+        // 3. 加總到：使用者目前畫面上看到的
         if (isCardVisible) {
             currentViewData.rev += final_bal;
             currentViewData.aunt += (card_total_aunt_pts * 100);
@@ -283,7 +282,6 @@ function updateTotalsFromDOM() {
         }
     });
 
-    // 畫面更新：顯示使用者正在看的那個區塊的總和
     const net_profit = currentViewData.rev - currentViewData.aunt - currentViewData.agent;
     document.getElementById('total_revenue').innerText = currentViewData.rev.toLocaleString();
     document.getElementById('total_aunt').innerText = currentViewData.aunt.toLocaleString(); 
@@ -301,7 +299,6 @@ function updateTotalsFromDOM() {
     const textDisplay = document.getElementById('aunt_text_display');
     if (textDisplay) textDisplay.innerText = auntTextString.trim() ? `${dateStr}\n${auntTextString.trim()}` : "無資料";
 
-    // 🌟 將「全店資料」跟「各區資料」整包打包，準備存入 Firebase (周結要用的就是這個！)
     currentDailySummaryData = {
         dateName: dateStr,
         revenue: globalData.rev,
@@ -310,7 +307,7 @@ function updateTotalsFromDOM() {
         agentMap: globalData.map,
         works: globalData.works,
         profit: globalData.rev - globalData.aunt - globalData.agent,
-        regionData: regionData, // 🎉 這裡是周結的關鍵
+        regionData: regionData,
         timestamp: Date.now() 
     };
 }
@@ -331,13 +328,14 @@ function copyDailyReport() {
 
     let staffDetails = "";
     document.querySelectorAll('.staff-card-settle').forEach(card => {
-        if (card.style.display === 'none') return; // 🌟 新增：只複製畫面上看得到的，如果是隱藏的區域就不複製
+        if (card.style.display === 'none') return;
         let name = card.dataset.staffName || "未知";
         const balEl = card.querySelector('.final-balance'); const balance = balEl ? balEl.innerText.replace(/,/g, '') : "0";
         staffDetails += `${name} ${balance}\n`;
     });
 
-    const regionText = currentRegion === 'All' ? '' : ` (${currentRegion})`; // 🌟 新增：報表加上區域名字
+    // 🌟 升級：多區報表名字組合
+    const regionText = currentRegion.includes('All') ? '' : ` (${currentRegion.join(' + ')})`; 
     const reportText = `${dateStr}${regionText}\n總收 ${totalRev}\n---------------------\n阿姨 ${totalAunt}\n經紀 ${totalAgent}\n---------------------\n${staffDetails.trim()}\n===============\n盈餘 ${totalProfit}`;
     const previewBox = document.getElementById('dailyReportPreview'); if(previewBox) previewBox.value = reportText;
     navigator.clipboard.writeText(reportText).then(() => { showToast("📊 報表已複製！"); }).catch(() => { showToast("❌ 複製失敗"); });
@@ -349,11 +347,12 @@ function copyAuntText() {
     navigator.clipboard.writeText(text).then(() => { showToast("✅ 已複製！請手動填寫日期"); }).catch(() => { showToast("❌ 複製失敗"); });
 }
 
+// 🌟 升級：複製單人員表格到Excel (14號字 + 全粗體 + 名稱欄純藍色)
 window.copySingleSettlementToExcel = async function(staffId, staffName) {
     const card = document.getElementById('settle-card-' + staffId);
     if (!card) return;
 
-    let excelHtml = '<meta charset="UTF-8"><table border="1" style="border-collapse: collapse; font-family: sans-serif;">';
+    let excelHtml = '<meta charset="UTF-8"><table border="1" style="border-collapse: collapse; font-family: sans-serif; font-size: 14pt; font-weight: bold;">';
 
     const table = card.querySelector('table');
     if (!table) return;
@@ -374,9 +373,16 @@ window.copySingleSettlementToExcel = async function(staffId, staffName) {
                 const td = cells[i];
                 const cellText = td.innerText;
                 const isModified = td.classList.contains('manual-text');
-                const cellColor = isModified ? '#8e44ad' : 'black'; 
-                const fontWeight = isModified ? 'bold' : 'normal';
-                excelHtml += `<td style="color: ${cellColor}; font-weight: ${fontWeight}; text-align: center;">${cellText}</td>`;
+                
+                // 預設為黑色，手動修改過為紫色
+                let cellColor = isModified ? '#8e44ad' : 'black'; 
+                
+                // 🌟 新增判斷：如果是第 1 欄 (名稱)，強制設定為「純藍色」
+                if (i === 1) {
+                    cellColor = '#0000FF'; 
+                }
+
+                excelHtml += `<td style="color: ${cellColor}; font-weight: bold; font-size: 14pt; text-align: center;">${cellText}</td>`;
             }
             excelHtml += '</tr>';
         }
@@ -392,12 +398,12 @@ window.copySingleSettlementToExcel = async function(staffId, staffName) {
             "text/plain": blobText
         });
         await navigator.clipboard.write([clipboardItem]);
-        showToast(`✅ 已複製 4 欄純資料！`);
+        showToast(`✅ 已複製 4 欄純資料！(14號粗體 + 藍色名字)`);
     } catch (error) {
         console.error("剪貼簿 API 失敗:", error);
         const tempDiv = document.createElement("div"); tempDiv.innerHTML = excelHtml; tempDiv.style.position = "absolute"; tempDiv.style.left = "-9999px"; document.body.appendChild(tempDiv);
         const range = document.createRange(); range.selectNodeContents(tempDiv); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
         const successful = document.execCommand('copy'); document.body.removeChild(tempDiv);
-        if(successful) showToast(`✅ 已複製 4 欄純資料！`); else showToast("❌ 複製失敗");
+        if(successful) showToast(`✅ 已複製 4 欄純資料！(14號粗體 + 藍色名字)`); else showToast("❌ 複製失敗");
     }
 };
