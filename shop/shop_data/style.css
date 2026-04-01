@@ -200,3 +200,42 @@ input:checked + .slider:before { transform: translateX(16px); }
     margin-left: 5px;
     transition: transform 0.3s;
 }
+
+/* =========================================
+   📱 手機版專屬放大優化 (Pixel 10 等手機適用)
+   ========================================= */
+@media (max-width: 600px) {
+    /* 1. 放大上方導航列與分頁按鈕，讓手指更好按 */
+    .nav-bar { height: 60px; }
+    .tab-btn { font-size: 16px; padding: 10px 15px; }
+    .app-title { font-size: 16px; }
+
+    /* 2. 排班表的左側人員名單調整 */
+    .left-panel { width: 100px; min-width: 100px; } /* 縮窄左邊，給右邊時間軸多點空間 */
+    .staff-name { font-size: 16px; padding: 4px; }
+    .schedule-text-display { font-size: 14px; line-height: 1.5; padding: 8px; }
+    .region-select-mini { font-size: 13px; max-width: 100%; } /* 放大選單字體 */
+    
+    /* 3. 放大部分常用按鈕與輸入框 */
+    .action-btn { padding: 10px 15px; font-size: 15px; }
+    .date-input { font-size: 20px; width: 90px; }
+    .time-settings input { font-size: 16px; width: 45px; }
+    
+    /* 4. 日結與周結的總計卡片放大 */
+    .summary-card { min-height: 90px; padding: 15px; }
+    .summary-card h4 { font-size: 13px; }
+    .summary-value { font-size: 24px; }
+    #total_net_profit_card .summary-value { font-size: 32px !important; }
+
+    /* 5. 彈出視窗 (Modal) 滿版顯示與大按鈕 */
+    .modal-content { width: 95%; padding: 20px; }
+    .modal-btn { padding: 15px; font-size: 18px; }
+    #modalTextarea { font-size: 18px; }
+    
+    /* 6. 排班表的時間區塊字體稍微放大 */
+    .block { font-size: 13px; padding: 4px; }
+    
+    /* 7. 修正區域按鈕列的滑動體驗 */
+    .region-tabs { padding: 10px 5px; }
+    .region-btn { font-size: 15px; padding: 8px 15px; }
+}
