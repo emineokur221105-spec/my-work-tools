@@ -24,7 +24,7 @@
         .search-box { margin-bottom: 10px; }
         .search-box input { width: 100%; padding: 8px; border-radius: 4px; border: none; background: #34495e; color: white; }
         
-        /* 新增：視圖切換按鈕區 */
+        /* 視圖切換按鈕區 */
         .view-toggle { display: flex; gap: 8px; margin-bottom: 10px; }
         .view-toggle button { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; }
         #btn-view-active { background: var(--primary); color: white; }
@@ -34,7 +34,7 @@
         .batch-control span { cursor: pointer; color: var(--primary); transition: 0.2s; }
         .batch-control span:hover { color: #5dade2; text-decoration: underline; }
         
-        /* 修改：加上 -webkit-overflow-scrolling 讓 iOS 滑動更順暢 */
+        /* 加上 -webkit-overflow-scrolling 讓 iOS 滑動更順暢 */
         .member-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; border: 1px solid #34495e; margin-bottom: 10px; border-radius: 4px; -webkit-overflow-scrolling: touch; }
         
         .member-list::-webkit-scrollbar { width: 6px; }
@@ -76,7 +76,7 @@
         #toast { visibility: hidden; min-width: 200px; background-color: #2d3436; color: #fff; text-align: center; border-radius: 50px; padding: 12px 20px; position: fixed; z-index: 2000; left: 50%; transform: translateX(-50%); bottom: 30px; opacity: 0; transition: 0.3s; }
         #toast.show { visibility: visible; opacity: 1; bottom: 50px; }
 
-        /* 修改：手機版緊湊顯示設定 */
+        /* 手機版緊湊顯示設定 */
         @media (max-width: 768px) {
             .sidebar { position: fixed; left: -320px; height: 100%; width: 280px; }
             .sidebar.mobile-open { left: 0; }
@@ -153,6 +153,7 @@
             <select id="input-location">
                 <option value="民權路">民權路</option>
                 <option value="莊二街">莊二街</option>
+                <option value="北新街">北新街</option>
             </select>
         </div>
 
@@ -249,13 +250,13 @@
     const DEFAULT_EXTRA = "加值服務項目A\n\n長鍾\n3+1\n5+3";
     const DEFAULT_FOOTER_TEMPLATE = `***請顧客帶  整數進去 小姐小鈔不夠多***\n\n入珠客不告知洗澡\n遭小姐打槍 不退費 \n\n偷拍需刪除影or照片 \n罰 ( 紅包3,000 ) \n偷拔套 ( 紅包6,000 )\n\n洗澡後不退錢\n超過10分鐘禁止更換方案\n脫衣服打槍500 / 摸到身體+500 (脫衣服又亂摸=1,000)\n\n熟爆30,000＋當日營業額\n生爆40,000＋當日營業額\n生爆熟60,000＋當日營業額\n勞煩派工請勿亂搞`;
 
-    // 修改：Sortable 加入延遲判斷，避免手機滑動被誤判
+    // Sortable 加入延遲判斷，避免手機滑動被誤判
     const el = document.getElementById('member-list');
     Sortable.create(el, {
         animation: 150,
         ghostClass: 'sortable-ghost',
-        delay: 200,             // 💡 長按 200 毫秒才會觸發拖曳
-        delayOnTouchOnly: true, // 💡 只有觸控螢幕才需要長按
+        delay: 200,             
+        delayOnTouchOnly: true, 
         onEnd: async function () {
             const searchVal = document.getElementById('search-input').value;
             if(searchVal) return showToast('⚠️ 搜尋模式下無法儲存排序');
@@ -313,7 +314,12 @@
             };
             const nameSpan = document.createElement('span');
             nameSpan.className = 'member-name';
-            const locBadge = member.location === '莊二街' ? '【莊】' : '【民】';
+            
+            // 新增北新街的小標籤邏輯
+            let locBadge = '【民】';
+            if (member.location === '莊二街') locBadge = '【莊】';
+            if (member.location === '北新街') locBadge = '【北】';
+            
             nameSpan.innerHTML = `<small style="color:#aaa">${locBadge}</small> ${member.name || '未命名'}`;
             li.onclick = () => loadMember(member.id);
 
@@ -502,24 +508,36 @@
         if (selectedIds.size === 0) return alert('請先勾選名單！');
         const dateStr = `${new Date().getMonth() + 1}/${new Date().getDate()}`;
         let headerText = `${dateStr}\n@all\n🔥紙房子🔥定點\n\n下單請敲 ➡️➡️紙房子1線-派工下單【東京】\n\n⭐️桃園區\n—————————————\n`;
-        let listMinquan = [], listZhuang = [], fullDetailsText = "";
+        
+        let listMinquan = [], listZhuang = [], listBeixin = [], fullDetailsText = ""; 
         sortedCache.forEach((member) => {
             if (selectedIds.has(member.id) && (member.status === 'active' || !member.status)) {
-                if (member.location === '莊二街') listZhuang.push(member); else listMinquan.push(member);
+                if (member.location === '莊二街') listZhuang.push(member); 
+                else if (member.location === '北新街') listBeixin.push(member); 
+                else listMinquan.push(member);
             }
         });
+
         let minquanSection = "";
         if (listMinquan.length > 0) {
             minquanSection = `【 民權路 】\n❌❌❌不接生客\n需成功消費3次以上\n今日 (${listMinquan.length}) 位上班\n\n`;
             listMinquan.forEach(m => { minquanSection += `${m.name}\n\n`; });
         }
+        
         let zhuangSection = "";
         if (listZhuang.length > 0) {
             zhuangSection = (listMinquan.length > 0 ? "—————————————\n" : "") + `【 莊二街 】\n❌❌❌不接生客\n需成功消費3次以上\n今日 (${listZhuang.length}) 位上班\n\n`;
             listZhuang.forEach(m => { zhuangSection += `${m.name}\n\n`; });
         }
-        listMinquan.concat(listZhuang).forEach(m => { fullDetailsText += formatText(m) + `\n\n————————\n\n`; });
-        const finalOutput = headerText + minquanSection + zhuangSection + "=======================\n" + fullDetailsText + (localStorage.getItem('myFooter') || DEFAULT_FOOTER_TEMPLATE);
+
+        let beixinSection = "";
+        if (listBeixin.length > 0) {
+            beixinSection = ((listMinquan.length > 0 || listZhuang.length > 0) ? "—————————————\n" : "") + `【 北新街 】\n❌❌❌不接生客\n需成功消費3次以上\n今日 (${listBeixin.length}) 位上班\n\n`;
+            listBeixin.forEach(m => { beixinSection += `${m.name}\n\n`; });
+        }
+
+        listMinquan.concat(listZhuang).concat(listBeixin).forEach(m => { fullDetailsText += formatText(m) + `\n\n————————\n\n`; });
+        const finalOutput = headerText + minquanSection + zhuangSection + beixinSection + "=======================\n" + fullDetailsText + (localStorage.getItem('myFooter') || DEFAULT_FOOTER_TEMPLATE);
         document.getElementById('output-area').value = finalOutput.trim();
         navigator.clipboard.writeText(finalOutput).then(() => showToast(`✅ 已複製公告`));
     };
@@ -531,17 +549,18 @@
         let headerText = `${dateStr} ⚠️本日班表更新⚠️\n@All \n=================\n`;
         let footerText = `=================\n煩請各位老闆小幫手協助更新上架\n十分感謝！！祝生意興隆`;
         
-        let listMinquan = [], listZhuang = [];
+        let listMinquan = [], listZhuang = [], listBeixin = [];
         sortedCache.forEach((member) => {
             if (selectedIds.has(member.id) && (member.status === 'active' || !member.status)) {
                 if (member.location === '莊二街') listZhuang.push(member); 
+                else if (member.location === '北新街') listBeixin.push(member); 
                 else listMinquan.push(member);
             }
         });
 
         let minquanSection = "";
         if (listMinquan.length > 0) {
-            minquanSection = `【 民權】今日 ${listMinquan.length} 位上班\n\n`;
+            minquanSection = `【 民權 】今日 ${listMinquan.length} 位上班\n\n`;
             listMinquan.forEach(m => { minquanSection += `${m.name}\n\n`; });
             minquanSection += `=================\n`;
         }
@@ -550,9 +569,16 @@
         if (listZhuang.length > 0) {
             zhuangSection = `【 莊二 】今日 ${listZhuang.length} 位上班\n\n`;
             listZhuang.forEach(m => { zhuangSection += `${m.name}\n\n`; });
+            zhuangSection += `=================\n`; 
         }
 
-        const finalOutput = headerText + minquanSection + zhuangSection + footerText;
+        let beixinSection = "";
+        if (listBeixin.length > 0) {
+            beixinSection = `【 北新 】今日 ${listBeixin.length} 位上班\n\n`;
+            listBeixin.forEach(m => { beixinSection += `${m.name}\n\n`; });
+        }
+
+        const finalOutput = headerText + minquanSection + zhuangSection + beixinSection + footerText;
         document.getElementById('output-area').value = finalOutput.trim();
         navigator.clipboard.writeText(finalOutput).then(() => showToast(`✅ 已複製簡短班表`));
     };
