@@ -183,7 +183,10 @@ function renderRegionTabs() {
     const settleContainer = document.getElementById('settleRegionTabs'); 
     const weeklyContainer = document.getElementById('weeklyRegionTabs'); 
     
-    let html = `<button class="region-btn ${currentRegion === 'All' ? 'active' : ''}" onclick="switchRegion('All')">全部顯示</button>`; 
+    // 防呆：確保 currentRegion 隨時都是陣列
+    if (!Array.isArray(currentRegion)) currentRegion = [currentRegion];
+
+    let html = `<button class="region-btn ${currentRegion.includes('All') ? 'active' : ''}" onclick="switchRegion('All')">全部顯示</button>`; 
     
     html += `<button class="region-btn" onclick="toggleWorkingOnly()" style="margin-left: 10px; border: 1px solid #27ae60; color: ${showWorkingOnly ? 'white' : '#27ae60'}; background: ${showWorkingOnly ? '#27ae60' : 'white'};">${showWorkingOnly ? '取消篩選' : '僅顯示上班'}</button>`;
 
@@ -193,7 +196,7 @@ function renderRegionTabs() {
     }
 
     REGIONS.forEach(r => { 
-        html += `<button class="region-btn ${currentRegion === r ? 'active' : ''}" onclick="switchRegion('${r}')">${r}</button>`; 
+        html += `<button class="region-btn ${currentRegion.includes(r) ? 'active' : ''}" onclick="switchRegion('${r}')">${r}</button>`; 
         if (typeof currentWeeklyRegions !== 'undefined') {
             weeklyHtml += `<button class="region-btn ${currentWeeklyRegions.includes(r) ? 'active' : ''}" onclick="switchWeeklyRegion('${r}')">${r}</button>`; 
         }
@@ -204,7 +207,29 @@ function renderRegionTabs() {
     if(weeklyContainer && weeklyHtml) weeklyContainer.innerHTML = weeklyHtml; 
 }
 
-function switchRegion(region) { currentRegion = region; renderRegionTabs(); const isScheduleActive = document.getElementById('view-schedule').classList.contains('active'); if(isScheduleActive) renderScheduleAll(); else renderSettlementTable(); }
+window.switchRegion = function(region) { 
+    if (!Array.isArray(currentRegion)) currentRegion = [currentRegion];
+
+    if (region === 'All') { 
+        currentRegion = ['All']; 
+    } else {
+        if (currentRegion.includes('All')) { 
+            currentRegion = [region]; 
+        } else {
+            if (currentRegion.includes(region)) { 
+                currentRegion = currentRegion.filter(r => r !== region); 
+            } else { 
+                currentRegion.push(region); 
+            }
+        }
+        if (currentRegion.length === 0) currentRegion = ['All'];
+    }
+
+    renderRegionTabs(); 
+    const isScheduleActive = document.getElementById('view-schedule').classList.contains('active'); 
+    if(isScheduleActive) renderScheduleAll(); 
+    else renderSettlementTable(); 
+};
 
 window.toggleWorkingOnly = function() {
     showWorkingOnly = !showWorkingOnly; // 切換開關狀態
@@ -261,7 +286,20 @@ function clearAllSchedules() { if(confirm("確定要清空這一天所有人的�
 function resetStaffSettings(staffId) { if(confirm("確定要初始化此人的所有設定嗎？\n(包含經紀費率、獨立參數、雜支都會恢復預設)")) { staffData = staffData.map(staff => { if (staff.id === staffId) return { ...staff, customConfig: { enabled: false, comm: {}, cost: {}, work: {} }, agentName: "", agentRate: 300, manualExpense: 0, overrides: {} }; return staff; }); saveScheduleData(); renderSettlementTable(); showToast("✅ 已還原設定"); } }
 function addNewRegion() { const input = document.getElementById('newRegionInput'); const newRegion = input.value.trim(); if (!newRegion) { alert("請輸入區域名稱！"); return; } if (REGIONS.includes(newRegion)) { alert("⚠️ 此區域已經存在了！"); return; } REGIONS.push(newRegion); roomConfig[newRegion] = []; input.value = ''; saveScheduleData(); renderRegionTabs(); const select = document.getElementById('roomConfigRegionSelect'); select.innerHTML = REGIONS.map(r => `<option value="${r}">${r}</option>`).join(''); select.value = newRegion; renderRoomConfigUI(); showToast(`✅ 已新增大區域：${newRegion}`); }
 function deleteCurrentRegion() { const region = document.getElementById('roomConfigRegionSelect').value; if (!region) return; if (confirm(`確定要刪除大區域「${region}」嗎？\n這會同時刪除該區【所有的房間設定】！`)) { REGIONS = REGIONS.filter(r => r !== region); delete roomConfig[region]; saveScheduleData(); renderRegionTabs(); openRoomConfigModal(); showToast(`🗑️ 已刪除區域：${region}`); } }
-function openRoomConfigModal() { const select = document.getElementById('roomConfigRegionSelect'); if (REGIONS.length === 0) select.innerHTML = '<option value="">(空)</option>'; else { select.innerHTML = REGIONS.map(r => `<option value="${r}">${r}</option>`).join(''); if (currentRegion !== 'All' && REGIONS.includes(currentRegion)) select.value = currentRegion; } renderRoomConfigUI(); document.getElementById('roomConfigModal').classList.add('active'); }
+function openRoomConfigModal() { 
+    const select = document.getElementById('roomConfigRegionSelect'); 
+    if (REGIONS.length === 0) {
+        select.innerHTML = '<option value="">(空)</option>'; 
+    } else { 
+        select.innerHTML = REGIONS.map(r => `<option value="${r}">${r}</option>`).join(''); 
+        // 🌟 修復這裡的判斷邏輯，因為 currentRegion 已經變成陣列了
+        if (!currentRegion.includes('All') && currentRegion.length > 0 && REGIONS.includes(currentRegion[0])) {
+            select.value = currentRegion[0]; 
+        }
+    } 
+    renderRoomConfigUI(); 
+    document.getElementById('roomConfigModal').classList.add('active'); 
+}
 function closeRoomConfigModal() { document.getElementById('roomConfigModal').classList.remove('active'); }
 
 // 🌟 新增：繪製房間設定視窗時，把當前區域的「前標」帶進去
