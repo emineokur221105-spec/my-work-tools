@@ -423,3 +423,34 @@ window.toggleTopBar = function() {
 };
 
 initSchedule();
+
+// 🌟 新增：手動縮放介面功能
+window.applyZoom = function(scaleValue) {
+    // 取得所有的主畫面容器
+    const views = document.querySelectorAll('.view-container');
+    
+    views.forEach(view => {
+        // 使用 CSS 的 zoom 屬性來縮放畫面
+        view.style.zoom = scaleValue;
+    });
+    
+    // 把使用者的選擇存起來，下次打開網頁就不用重選
+    localStorage.setItem('appZoomLevel', scaleValue);
+    
+    // 如果目前在排班畫面，稍微延遲一下重新繪製時間軸，確保紅線位置正確
+    if (document.getElementById('view-schedule') && document.getElementById('view-schedule').classList.contains('active')) {
+        setTimeout(() => {
+            if (typeof renderTracksOnly === 'function') renderTracksOnly();
+        }, 100);
+    }
+};
+
+// 🌟 新增：網頁載入時，自動讀取上次設定的縮放比例
+window.addEventListener('DOMContentLoaded', () => {
+    const savedZoom = localStorage.getItem('appZoomLevel') || "1";
+    const zoomSelect = document.getElementById('uiZoomSelect');
+    if (zoomSelect) {
+        zoomSelect.value = savedZoom;
+    }
+    applyZoom(savedZoom);
+});

@@ -205,38 +205,38 @@ input:checked + .slider:before { transform: translateX(16px); }
    📱 手機版專屬放大優化 (Pixel 10 等手機適用)
    ========================================= */
 @media (max-width: 600px) {
-    /* 1. 上方導航列：改為兩行式設計，支援百分比等比縮放 */
+    /* 1. 上方導航列：兩層式排版 */
     .nav-bar { 
         height: auto; 
         min-height: 60px; 
-        flex-wrap: wrap; /* 🌟 允許內容自動換行，分成上下兩排 */
-        padding: 8px 10px; 
-        gap: 10px; 
+        flex-wrap: wrap; /* 🌟 允許換行，分成上下兩排 */
+        padding: 10px; 
     }
 
     /* 第一排：首頁、標題/訊號燈、收合箭頭 */
     .app-title { 
-        width: 100%; /* 佔滿整行 100% */
+        width: 100%; /* 佔滿整行 */
         font-size: 15px; 
-        justify-content: space-between; /* 讓元素均勻散開 */
+        justify-content: space-between; 
+        margin-bottom: 8px; /* 🌟 和下方的按鈕稍微隔開，畫面更乾淨 */
     }
 
     /* 第二排：四個功能按鈕區域 */
     .nav-buttons { 
-        width: 100%; /* 佔滿整行 100% */
+        width: 100%; /* 佔滿整行 */
         display: flex;
-        justify-content: space-between; 
-        gap: 2%; /* 🌟 使用百分比設定按鈕間距 */
+        gap: 2%; /* 🌟 按鈕之間的間距使用百分比 */
     }
 
-    /* 🌟 按鈕等比縮放核心設定 (排班、日結、周結、銷毀) */
+    /* 🌟 真正的完美等比縮放！(排班、日結、周結、銷毀) */
     .tab-btn, #emergencyWipeBtn { 
-        width: 23.5%; /* 4顆按鈕平均分配剩餘寬度 (100% / 4 再扣掉 gap) */
+        flex: 1; /* 🌟 核心魔法：讓按鈕自動平分 100% 寬度，無論螢幕多寬都會完美等比縮放 */
+        width: auto; 
         padding: 8px 0; 
         font-size: 14px; 
         text-align: center;
-        margin-left: 0 !important; /* ⚠️ 抵銷 JS 動態加上的外距，確保排版絕對對齊 */
-        white-space: nowrap; /* 防止文字折行 */
+        margin-left: 0 !important; /* ⚠️ 強制消除 JS 給銷毀按鈕加的死板間距 */
+        white-space: nowrap; 
     }
 
     /* 修復加值服務的 + 按鈕太小問題 */
@@ -246,32 +246,22 @@ input:checked + .slider:before { transform: translateX(16px); }
         font-size: 20px !important;
     }
 
-    /* 2. 排班表的左側人員名單調整 */
+    /* --- 以下保留你原本的手機版設定 --- */
     .left-panel { width: 100px; min-width: 100px; } 
     .staff-name { font-size: 16px; padding: 4px; }
     .schedule-text-display { font-size: 14px; line-height: 1.5; padding: 8px; }
     .region-select-mini { font-size: 13px; max-width: 100%; } 
-    
-    /* 3. 放大部分常用按鈕與輸入框 */
     .action-btn { padding: 10px 15px; font-size: 15px; }
     .date-input { font-size: 20px; width: 90px; }
     .time-settings input { font-size: 16px; width: 45px; }
-    
-    /* 4. 日結與周結的總計卡片放大 */
     .summary-card { min-height: 90px; padding: 15px; }
     .summary-card h4 { font-size: 13px; }
     .summary-value { font-size: 24px; }
     #total_net_profit_card .summary-value { font-size: 32px !important; }
-
-    /* 5. 彈出視窗 (Modal) 滿版顯示與大按鈕 */
     .modal-content { width: 95%; padding: 20px; }
     .modal-btn { padding: 15px; font-size: 18px; }
     #modalTextarea { font-size: 18px; }
-    
-    /* 6. 排班表的時間區塊字體稍微放大 */
     .block { font-size: 13px; padding: 4px; }
-    
-    /* 7. 修正區域按鈕列的滑動體驗 */
     .region-tabs { padding: 10px 5px; }
     .region-btn { font-size: 15px; padding: 8px 15px; }
 }

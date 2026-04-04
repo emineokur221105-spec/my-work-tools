@@ -23,6 +23,13 @@
         
         🏢 門店管理(分店版) <span class="sync-dot" id="syncStatus"></span>
         
+        <select id="uiZoomSelect" onchange="applyZoom(this.value)" style="margin-left: 5px; padding: 2px 4px; border-radius: 4px; background: #34495e; color: #f1c40f; border: 1px solid #7f8c8d; font-weight: bold;">
+            <option value="1">100%</option>
+            <option value="0.8">80%</option>
+            <option value="0.6">60%</option>
+            <option value="0.4">40%</option>
+        </select>
+        
         <button id="toggleTopBarBtn" class="btn-toggle-bar" onclick="toggleTopBar()" title="收起控制列">🔼</button>
     </div>
     <div class="nav-buttons">
