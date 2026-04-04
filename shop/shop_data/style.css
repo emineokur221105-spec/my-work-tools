@@ -205,16 +205,52 @@ input:checked + .slider:before { transform: translateX(16px); }
    📱 手機版專屬放大優化 (Pixel 10 等手機適用)
    ========================================= */
 @media (max-width: 600px) {
-    /* 1. 放大上方導航列與分頁按鈕，讓手指更好按 */
-    .nav-bar { height: 60px; }
-    .tab-btn { font-size: 16px; padding: 10px 15px; }
-    .app-title { font-size: 16px; }
+    /* 1. 上方導航列：改為兩行式設計，支援百分比等比縮放 */
+    .nav-bar { 
+        height: auto; 
+        min-height: 60px; 
+        flex-wrap: wrap; /* 🌟 允許內容自動換行，分成上下兩排 */
+        padding: 8px 10px; 
+        gap: 10px; 
+    }
+
+    /* 第一排：首頁、標題/訊號燈、收合箭頭 */
+    .app-title { 
+        width: 100%; /* 佔滿整行 100% */
+        font-size: 15px; 
+        justify-content: space-between; /* 讓元素均勻散開 */
+    }
+
+    /* 第二排：四個功能按鈕區域 */
+    .nav-buttons { 
+        width: 100%; /* 佔滿整行 100% */
+        display: flex;
+        justify-content: space-between; 
+        gap: 2%; /* 🌟 使用百分比設定按鈕間距 */
+    }
+
+    /* 🌟 按鈕等比縮放核心設定 (排班、日結、周結、銷毀) */
+    .tab-btn, #emergencyWipeBtn { 
+        width: 23.5%; /* 4顆按鈕平均分配剩餘寬度 (100% / 4 再扣掉 gap) */
+        padding: 8px 0; 
+        font-size: 14px; 
+        text-align: center;
+        margin-left: 0 !important; /* ⚠️ 抵銷 JS 動態加上的外距，確保排版絕對對齊 */
+        white-space: nowrap; /* 防止文字折行 */
+    }
+
+    /* 修復加值服務的 + 按鈕太小問題 */
+    #addServiceRowBtn {
+        width: 32px !important;
+        height: 32px !important;
+        font-size: 20px !important;
+    }
 
     /* 2. 排班表的左側人員名單調整 */
-    .left-panel { width: 100px; min-width: 100px; } /* 縮窄左邊，給右邊時間軸多點空間 */
+    .left-panel { width: 100px; min-width: 100px; } 
     .staff-name { font-size: 16px; padding: 4px; }
     .schedule-text-display { font-size: 14px; line-height: 1.5; padding: 8px; }
-    .region-select-mini { font-size: 13px; max-width: 100%; } /* 放大選單字體 */
+    .region-select-mini { font-size: 13px; max-width: 100%; } 
     
     /* 3. 放大部分常用按鈕與輸入框 */
     .action-btn { padding: 10px 15px; font-size: 15px; }
