@@ -399,3 +399,139 @@ function buildCardFooterHTML(p) {
         </tbody></table>
     `;
 }
+
+// ==========================================
+// 🌟 完美座標對位版：餐費黑字 + 人員粗體 + 17-25列總結
+// ==========================================
+window.copyFullSettlementToExcel = async function() {
+    const cards = Array.from(document.querySelectorAll('.staff-card-settle')).filter(card => card.style.display !== 'none');
+
+    if (cards.length === 0) {
+        alert("⚠️ 目前該區域沒有資料！");
+        return;
+    }
+
+    showToast("⏳ 正在產出完美對位報表...");
+
+    // 全表基礎設定：14pt, 背景白
+    let html = '<table border="1" style="border-collapse: collapse; text-align: center; font-family: Arial, sans-serif; font-size: 14pt; background-color: #FFFFFF;">';
+    
+    // --- 【第 1 列：表頭】 ---
+    html += '<tr>';
+    cards.forEach(card => {
+        const staffName = card.dataset.staffName || "";
+        const agentName = card.dataset.agentName || "";
+        // 人名紅字粗體，經紀紅字粗體黃底
+        html += `<td style="color: #FF0000; font-weight: bold;">${staffName}</td>`;
+        html += `<td style="color: #000000;">阿姨</td>`;
+        html += `<td style="color: #000000;">收</td>`;
+        html += `<td style="color: #000000;">小姐</td>`;
+        html += `<td style="background-color: #FFFF00; color: #FF0000; font-weight: bold;">${agentName}</td>`;
+    });
+    html += '</tr>';
+
+    const staffRowsData = cards.map(card => {
+        return Array.from(card.querySelectorAll('tbody tr')).filter(tr => 
+            !tr.classList.contains('footer-total') && tr.querySelectorAll('td').length >= 6 && !tr.innerText.includes('📅')
+        );
+    });
+
+    // --- 【第 2 ~ 14 列：資料與餐費】 ---
+    for (let i = 0; i < 13; i++) { // i=0~12 (對應 Excel 2~14列)
+        html += '<tr>';
+        cards.forEach((card, cardIdx) => {
+            const rows = staffRowsData[cardIdx];
+            
+            if (i < rows.length) {
+                // 明細資料
+                const cells = rows[i].querySelectorAll('td');
+                const getColor = (cell) => (cell.classList.contains('manual-text') || cell.style.color === 'purple') ? '#800080' : '#000000';
+
+                // 第一欄人員名稱：粗體藍字
+                html += `<td style="color: #0000FF; font-weight: bold;">${cells[1].innerText}</td>`;
+                html += `<td style="color: ${getColor(cells[2])};">${cells[2].innerText}</td>`;
+                html += `<td style="color: ${getColor(cells[3])};">${cells[3].innerText}</td>`;
+                html += `<td style="color: ${getColor(cells[4])};">${cells[4].innerText}</td>`;
+                html += `<td style="color: ${getColor(cells[5])};">${cells[5].innerText}</td>`;
+            } else if (i === 12) { 
+                // 第 14 列：工數在第一格(粗藍)，餐費在第五格(黑字)
+                const works = card.dataset.totalWorks || '';
+                const exp = parseInt(card.querySelector('.input-expense')?.value || 0);
+                html += `<td style="color: #0000FF; font-weight: bold;">${works}</td>`;
+                html += `<td></td><td></td><td></td>`;
+                // ✅ 依照要求：餐費改為黑字 (#000000)，位置在經紀下方
+                html += `<td style="color: #000000;">${exp === 0 ? '' : -Math.abs(exp)}</td>`;
+            } else {
+                html += `<td></td><td></td><td></td><td></td><td></td>`;
+            }
+        });
+        html += '</tr>';
+    }
+
+    // --- 【第 15 列：個人總計列】 ---
+    html += '<tr>';
+    cards.forEach(card => {
+        const f = card.querySelectorAll('.footer-total td');
+        const tBal = card.querySelector('.final-balance')?.innerText || '';
+        html += `<td></td>`;
+        html += `<td>${f[1]?.innerText || ''}</td>`;
+        html += `<td>${f[2]?.innerText || ''}</td>`;
+        html += `<td>${f[3]?.innerText || ''}</td>`;
+        html += `<td style="font-weight: bold;">${tBal}</td>`;
+    });
+    html += '</tr>';
+
+    // --- 【第 16 列：空白】 ---
+    html += '<tr>' + `<td></td>`.repeat(cards.length * 5) + '</tr>';
+
+    // --- 【第 17 ~ 25 列：總結對位 (E17 開始，無粗體，無 $)】 ---
+    const getGlobal = (id) => document.getElementById(id)?.innerText.replace(/[^\d-]/g, '') || '';
+    const summaryList = [
+        ['共收', getGlobal('total_revenue')],
+        ['阿姨帳', getGlobal('total_aunt')]
+    ];
+
+    const agentText = document.getElementById('agent_fee_summary')?.innerText || '';
+    if (agentText && agentText !== '無') {
+        const matches = agentText.match(/([^:\s]+):\s*[\$]?([\d,]+)/g);
+        if (matches) {
+            matches.forEach(m => {
+                const parts = m.split(':');
+                summaryList.push([parts[0].trim(), parts[1].replace(/[^\d]/g, '').trim()]);
+            });
+        }
+    }
+    summaryList.push(['本日盈餘', getGlobal('total_net_profit')]);
+
+    for (let j = 0; j < 9; j++) {
+        html += '<tr>';
+        for (let s = 0; s < 4; s++) html += `<td></td>`; // 推到 E 欄
+        
+        if (j < summaryList.length) {
+            html += `<td style="text-align: left;">${summaryList[j][0]}</td>`;
+            html += `<td style="text-align: right;">${summaryList[j][1]}</td>`;
+            for (let e = 0; e < (cards.length * 5 - 6); e++) html += `<td></td>`;
+        } else {
+            for (let e = 0; e < (cards.length * 5 - 4); e++) html += `<td></td>`;
+        }
+        html += '</tr>';
+    }
+
+    html += '</table>';
+
+    // 寫入剪貼簿
+    try {
+        const blobHtml = new Blob([html], { type: "text/html" });
+        const blobText = new Blob(["已複製精準報表"], { type: "text/plain" });
+        const clipboardItem = new ClipboardItem({ "text/html": blobHtml, "text/plain": blobText });
+        await navigator.clipboard.write([clipboardItem]);
+        showToast("✅ 報表已精準對位！(餐費黑字版)");
+    } catch (err) {
+        const temp = document.createElement("div"); temp.innerHTML = html;
+        document.body.appendChild(temp);
+        const range = document.createRange(); range.selectNodeContents(temp);
+        window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+        document.execCommand('copy'); document.body.removeChild(temp);
+        showToast("✅ 報表已複製！");
+    }
+};
