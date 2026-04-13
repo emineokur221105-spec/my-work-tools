@@ -71,7 +71,6 @@ function renderSettlementTable() {
     renderSettleTimeout = setTimeout(() => { executeRenderSettlementTable(); }, 150); 
 }
 
-// 🌟 重構：讓主程式碼變得超級短，把畫圖的邏輯全部交給最下面的 Helper 函數！
 function executeRenderSettlementTable() {
     renderRegionTabs();
     const { globalCommTable, globalCostTable, globalWorkTable } = getGlobalPricingTables();
@@ -112,7 +111,14 @@ function executeRenderSettlementTable() {
         
         if (!currentRegion.includes('All') && !currentRegion.includes(staffRegion)) { card.style.display = 'none'; }
         
-        card.dataset.region = staffRegion; card.dataset.agentName = agentName; card.dataset.agentRate = agentRate; card.dataset.totalWorks = totalWorks; card.dataset.staffName = staff.name || "未填寫";
+        // 🌟 寫入 dataset，方便後續讀取房號與名稱作為未填經紀的防呆
+        card.dataset.region = staffRegion; 
+        card.dataset.agentName = agentName; 
+        card.dataset.agentRate = agentRate; 
+        card.dataset.totalWorks = totalWorks; 
+        card.dataset.staffName = staff.name || "未填寫";
+        card.dataset.roomName = staff.roomName || "未定";
+
         card.style.background = '#fff'; card.style.borderRadius = '8px'; card.style.border = '1px solid #ccc'; card.style.overflowX = 'auto'; card.style.boxShadow = '0 2px 5px rgba(0,0,0,0.05)';
 
         let regionOptions = "";
@@ -120,10 +126,8 @@ function executeRenderSettlementTable() {
         let roomBadge = staff.roomName ? `<span style="background:#2c3e50; color:#f1c40f; padding:2px 6px; border-radius:4px; font-size:12px; margin-right:5px; border: 1px solid #f1c40f;">${staff.roomName}</span>` : "";
         let displayName = staff.name || "未填寫";
 
-        // 🌟 呼叫 Header Helper 組合表格頭部
         let html = buildCardHeaderHTML({ staff, roomBadge, displayName, regionOptions, disableAttr, lockBg, paramBtnClass, paramBtnStyle, hideBtnStyle, agentName, agentRate, staffAgentFee });
 
-        // 🌟 呼叫 Row Helper 組合每一行資料
         results.forEach(row => {
             if (row.isDateHeader) { 
                 html += `<tr style="background:#fdf2e9; border-bottom:1px solid #f39c12;"><td colspan="8" style="padding:6px 10px; font-weight:bold; color:#d35400; text-align:left; font-size:13px; letter-spacing:1px;">📅 ${row.rawLine}</td></tr>`; 
@@ -132,7 +136,6 @@ function executeRenderSettlementTable() {
             html += buildCardRowHTML({ staff, row, editAttr, isLocked });
         });
 
-        // 🌟 呼叫 Footer Helper 組合表格尾部
         html += buildCardFooterHTML({ staff, manualExpense, disableAttr, lockBg, isLocked });
         
         card.innerHTML = html; container.appendChild(card);
@@ -182,20 +185,38 @@ function updateTotalsFromDOM() {
         const final_bal = card_total_bal + manualExpense;
         const finalBalCell = card.querySelector('.final-balance'); if(finalBalCell) finalBalCell.innerText = final_bal;
         
-        const agentName = card.dataset.agentName; const agentRate = parseInt(card.dataset.agentRate || 300);
+        let agentName = card.dataset.agentName; 
+        const agentRate = parseInt(card.dataset.agentRate || 300);
         const staffAgentFee = card_total_work * agentRate; 
         const feeDisplay = card.querySelector('.agent-fee-display'); if(feeDisplay) feeDisplay.innerText = `費用: $${staffAgentFee.toLocaleString()}`;
 
+        // 🌟 智能防呆：如果沒有填寫經紀人，自動產生「房號+人名」的專屬經紀人標籤
+        if (!agentName || agentName.trim() === "") {
+            const rName = card.dataset.roomName || "";
+            const sName = card.dataset.staffName !== "未填寫" ? card.dataset.staffName : "";
+            agentName = `未填-${rName}${sName ? '-' + sName : ''}`;
+        }
+
         globalData.rev += final_bal; globalData.aunt += (card_total_aunt_pts * 100); globalData.works += card_total_work; globalData.agent += staffAgentFee;
-        if(agentName) { if(!globalData.map[agentName]) globalData.map[agentName] = 0; globalData.map[agentName] += staffAgentFee; }
+        
+        // 只有產生工數 (有錢) 時，才把它加進明細表中，避免產生一堆 $0 的項目
+        if (card_total_work > 0) {
+            if(!globalData.map[agentName]) globalData.map[agentName] = 0; 
+            globalData.map[agentName] += staffAgentFee;
+            
+            if(!regionData[region].agentMap[agentName]) regionData[region].agentMap[agentName] = 0; 
+            regionData[region].agentMap[agentName] += staffAgentFee;
+        }
 
         regionData[region].revenue += final_bal; regionData[region].aunt += (card_total_aunt_pts * 100); regionData[region].works += card_total_work; regionData[region].agentTotal += staffAgentFee;
-        if(agentName) { if(!regionData[region].agentMap[agentName]) regionData[region].agentMap[agentName] = 0; regionData[region].agentMap[agentName] += staffAgentFee; }
         regionData[region].profit += (final_bal - (card_total_aunt_pts * 100) - staffAgentFee);
 
         if (isCardVisible) {
             currentViewData.rev += final_bal; currentViewData.aunt += (card_total_aunt_pts * 100); currentViewData.works += card_total_work; currentViewData.agent += staffAgentFee;
-            if(agentName) { if(!currentViewData.map[agentName]) currentViewData.map[agentName] = 0; currentViewData.map[agentName] += staffAgentFee; }
+            if (card_total_work > 0) {
+                if(!currentViewData.map[agentName]) currentViewData.map[agentName] = 0; 
+                currentViewData.map[agentName] += staffAgentFee;
+            }
         }
     });
 
@@ -413,15 +434,12 @@ window.copyFullSettlementToExcel = async function() {
 
     showToast("⏳ 正在產出完美對位報表...");
 
-    // 全表基礎設定：14pt, 背景白
     let html = '<table border="1" style="border-collapse: collapse; text-align: center; font-family: Arial, sans-serif; font-size: 14pt; background-color: #FFFFFF;">';
     
-    // --- 【第 1 列：表頭】 ---
     html += '<tr>';
     cards.forEach(card => {
         const staffName = card.dataset.staffName || "";
         const agentName = card.dataset.agentName || "";
-        // 人名紅字粗體，經紀紅字粗體黃底
         html += `<td style="color: #FF0000; font-weight: bold;">${staffName}</td>`;
         html += `<td style="color: #000000;">阿姨</td>`;
         html += `<td style="color: #000000;">收</td>`;
@@ -436,30 +454,25 @@ window.copyFullSettlementToExcel = async function() {
         );
     });
 
-    // --- 【第 2 ~ 14 列：資料與餐費】 ---
-    for (let i = 0; i < 13; i++) { // i=0~12 (對應 Excel 2~14列)
+    for (let i = 0; i < 13; i++) { 
         html += '<tr>';
         cards.forEach((card, cardIdx) => {
             const rows = staffRowsData[cardIdx];
             
             if (i < rows.length) {
-                // 明細資料
                 const cells = rows[i].querySelectorAll('td');
                 const getColor = (cell) => (cell.classList.contains('manual-text') || cell.style.color === 'purple') ? '#800080' : '#000000';
 
-                // 第一欄人員名稱：粗體藍字
                 html += `<td style="color: #0000FF; font-weight: bold;">${cells[1].innerText}</td>`;
                 html += `<td style="color: ${getColor(cells[2])};">${cells[2].innerText}</td>`;
                 html += `<td style="color: ${getColor(cells[3])};">${cells[3].innerText}</td>`;
                 html += `<td style="color: ${getColor(cells[4])};">${cells[4].innerText}</td>`;
                 html += `<td style="color: ${getColor(cells[5])};">${cells[5].innerText}</td>`;
             } else if (i === 12) { 
-                // 第 14 列：工數在第一格(粗藍)，餐費在第五格(黑字)
                 const works = card.dataset.totalWorks || '';
                 const exp = parseInt(card.querySelector('.input-expense')?.value || 0);
                 html += `<td style="color: #0000FF; font-weight: bold;">${works}</td>`;
                 html += `<td></td><td></td><td></td>`;
-                // ✅ 依照要求：餐費改為黑字 (#000000)，位置在經紀下方
                 html += `<td style="color: #000000;">${exp === 0 ? '' : -Math.abs(exp)}</td>`;
             } else {
                 html += `<td></td><td></td><td></td><td></td><td></td>`;
@@ -468,7 +481,6 @@ window.copyFullSettlementToExcel = async function() {
         html += '</tr>';
     }
 
-    // --- 【第 15 列：個人總計列】 ---
     html += '<tr>';
     cards.forEach(card => {
         const f = card.querySelectorAll('.footer-total td');
@@ -481,10 +493,8 @@ window.copyFullSettlementToExcel = async function() {
     });
     html += '</tr>';
 
-    // --- 【第 16 列：空白】 ---
     html += '<tr>' + `<td></td>`.repeat(cards.length * 5) + '</tr>';
 
-    // --- 【第 17 ~ 25 列：總結對位 (E17 開始，無粗體，無 $)】 ---
     const getGlobal = (id) => document.getElementById(id)?.innerText.replace(/[^\d-]/g, '') || '';
     const summaryList = [
         ['共收', getGlobal('total_revenue')],
@@ -493,7 +503,8 @@ window.copyFullSettlementToExcel = async function() {
 
     const agentText = document.getElementById('agent_fee_summary')?.innerText || '';
     if (agentText && agentText !== '無') {
-        const matches = agentText.match(/([^:\s]+):\s*[\$]?([\d,]+)/g);
+        // 🌟 修正：支援名稱中有空格的抓取，確保能完美對接
+        const matches = agentText.match(/([^\n:]+):\s*[\$]?([\d,]+)/g);
         if (matches) {
             matches.forEach(m => {
                 const parts = m.split(':');
@@ -505,7 +516,7 @@ window.copyFullSettlementToExcel = async function() {
 
     for (let j = 0; j < 9; j++) {
         html += '<tr>';
-        for (let s = 0; s < 4; s++) html += `<td></td>`; // 推到 E 欄
+        for (let s = 0; s < 4; s++) html += `<td></td>`;
         
         if (j < summaryList.length) {
             html += `<td style="text-align: left;">${summaryList[j][0]}</td>`;
@@ -519,13 +530,12 @@ window.copyFullSettlementToExcel = async function() {
 
     html += '</table>';
 
-    // 寫入剪貼簿
     try {
         const blobHtml = new Blob([html], { type: "text/html" });
         const blobText = new Blob(["已複製精準報表"], { type: "text/plain" });
         const clipboardItem = new ClipboardItem({ "text/html": blobHtml, "text/plain": blobText });
         await navigator.clipboard.write([clipboardItem]);
-        showToast("✅ 報表已精準對位！(餐費黑字版)");
+        showToast("✅ 報表已精準對位！(包含未填寫經紀人)");
     } catch (err) {
         const temp = document.createElement("div"); temp.innerHTML = html;
         document.body.appendChild(temp);

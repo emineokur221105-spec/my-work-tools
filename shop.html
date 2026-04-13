@@ -273,8 +273,10 @@
             <button id="modalAttendanceBtn" class="btn-attendance" onclick="toggleModalAttendance()">🟢 上班</button>
         </div>
         <textarea id="modalTextarea" class="modal-textarea" placeholder="請在此貼上完整班表..."></textarea>
+        
         <div class="modal-btns">
             <button class="modal-btn btn-cancel" onclick="closeEditModal()">取消</button>
+            <button class="modal-btn" style="background: #e74c3c; color: white; padding: 10px 5px;" onclick="resetFromModal()">🔄 重置</button>
             <button class="modal-btn btn-save" onclick="saveModalData()">確定儲存</button>
         </div>
     </div>

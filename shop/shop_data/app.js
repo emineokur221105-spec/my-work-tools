@@ -166,6 +166,8 @@ function saveScheduleData() {
     db.ref('shop_v8_global_settings').update({ regions: REGIONS, roomConfig: roomConfig, services: services, openHour: openHour, closeHour: closeHour, regionPrefixes: regionPrefixes });
     
     staffData.sort((a, b) => { let indexA = REGIONS.indexOf(a.region); let indexB = REGIONS.indexOf(b.region); if (indexA === -1) indexA = 999; if (indexB === -1) indexB = 999; if (indexA !== indexB) return indexA - indexB; let rooms = roomConfig[a.region] || []; let roomIdxA = rooms.indexOf(a.roomName); let roomIdxB = rooms.indexOf(b.roomName); if (roomIdxA === -1) roomIdxA = 999; if (roomIdxB === -1) roomIdxB = 999; if (roomIdxA !== roomIdxB) return roomIdxA - roomIdxB; return a.id - b.id; });
+    
+    // 🌟 只儲存當前日期的資料
     const safeDate = currentActiveDate.replace(/\//g, '-'); const dailyDataToSave = { staffData: staffData, isLocked: isLocked, date: currentActiveDate, timestamp: Date.now() };
     db.ref('shop_v8_daily_schedules/' + safeDate).update(dailyDataToSave).then(() => { syncStatus.style.background = "#2ecc71"; }).catch(error => { console.error("Firebase Save Error:", error); syncStatus.style.background = "#f1c40f"; });
 }
@@ -285,7 +287,38 @@ function saveStaffParams() { if (!currentParamsStaffId) return; const enabled = 
 function clearAllSchedules() { if(confirm("確定要清空這一天所有人的「班表內容」嗎？\n(不會影響別天的資料)")) { staffData = staffData.map(staff => ({ ...staff, content: "", taskStatuses: {}, overrides: {} })); saveScheduleData(); renderScheduleAll(); if (document.getElementById('view-settle').classList.contains('active')) renderSettlementTable(); showToast("✅ 已清空本日班表"); } }
 function resetStaffSettings(staffId) { if(confirm("確定要初始化此人的所有設定嗎？\n(包含經紀費率、獨立參數、雜支都會恢復預設)")) { staffData = staffData.map(staff => { if (staff.id === staffId) return { ...staff, customConfig: { enabled: false, comm: {}, cost: {}, work: {} }, agentName: "", agentRate: 300, manualExpense: 0, overrides: {} }; return staff; }); saveScheduleData(); renderSettlementTable(); showToast("✅ 已還原設定"); } }
 function addNewRegion() { const input = document.getElementById('newRegionInput'); const newRegion = input.value.trim(); if (!newRegion) { alert("請輸入區域名稱！"); return; } if (REGIONS.includes(newRegion)) { alert("⚠️ 此區域已經存在了！"); return; } REGIONS.push(newRegion); roomConfig[newRegion] = []; input.value = ''; saveScheduleData(); renderRegionTabs(); const select = document.getElementById('roomConfigRegionSelect'); select.innerHTML = REGIONS.map(r => `<option value="${r}">${r}</option>`).join(''); select.value = newRegion; renderRoomConfigUI(); showToast(`✅ 已新增大區域：${newRegion}`); }
-function deleteCurrentRegion() { const region = document.getElementById('roomConfigRegionSelect').value; if (!region) return; if (confirm(`確定要刪除大區域「${region}」嗎？\n這會同時刪除該區【所有的房間設定】！`)) { REGIONS = REGIONS.filter(r => r !== region); delete roomConfig[region]; saveScheduleData(); renderRegionTabs(); openRoomConfigModal(); showToast(`🗑️ 已刪除區域：${region}`); } }
+
+// 🌟 刪除區域時，同步移除當日班表中該區的房間資訊
+function deleteCurrentRegion() { 
+    const region = document.getElementById('roomConfigRegionSelect').value; 
+    if (!region) return; 
+    if (confirm(`確定要刪除大區域「${region}」嗎？\n這會同時刪除該區【所有的房間設定】，並且把今天排班表上該區的房間一併移除！`)) { 
+        
+        // 1. 從全域設定中移除該區域與相關房間
+        REGIONS = REGIONS.filter(r => r !== region); 
+        delete roomConfig[region]; 
+        
+        // 2. 將今日班表 (staffData) 裡面屬於這個區域的項目移除
+        staffData = staffData.filter(staff => staff.region !== region);
+
+        // 3. 儲存變更
+        saveScheduleData(); 
+        
+        // 4. 重新繪製 UI
+        renderRegionTabs(); 
+        openRoomConfigModal(); 
+        
+        // 確保主畫面刷新
+        if (document.getElementById('view-schedule').classList.contains('active')) {
+            renderScheduleAll();
+        } else if (document.getElementById('view-settle').classList.contains('active')) {
+            renderSettlementTable();
+        }
+
+        showToast(`🗑️ 已刪除區域：${region}`); 
+    } 
+}
+
 function openRoomConfigModal() { 
     const select = document.getElementById('roomConfigRegionSelect'); 
     if (REGIONS.length === 0) {
@@ -302,7 +335,7 @@ function openRoomConfigModal() {
 }
 function closeRoomConfigModal() { document.getElementById('roomConfigModal').classList.remove('active'); }
 
-// 🌟 新增：繪製房間設定視窗時，把當前區域的「前標」帶進去
+// 🌟 繪製房間設定視窗時，把當前區域的「前標」帶進去
 function renderRoomConfigUI() { 
     const region = document.getElementById('roomConfigRegionSelect').value; 
     const listContainer = document.getElementById('roomConfigList'); 
@@ -454,3 +487,45 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     applyZoom(savedZoom);
 });
+
+// ==========================================
+// 🌟 新增：個別房間卡片的「重置」功能
+// ==========================================
+
+
+// 🔄 編輯視窗內的重置按鈕（徹底重置當日版，不影響歷史紀錄）
+window.resetFromModal = function() {
+    if (!currentEditingStaffId) return;
+    if(confirm("確定要徹底重置這個房間的「今日」設定嗎？\n(名字、班表、獨立參數與經紀都會恢復預設，不影響過往紀錄，視窗將關閉)")) {
+        staffData = staffData.map(s => {
+            if (s.id === currentEditingStaffId) {
+                return { 
+                    ...s, 
+                    name: "", 
+                    content: "", 
+                    taskStatuses: {}, 
+                    overrides: {}, 
+                    manualExpense: 0,             // 雜支歸零
+                    agentName: "",                // 經紀人名字清空
+                    agentRate: 300,               // 經紀人費率恢復預設 300
+                    customConfig: {               // 獨立參數關閉並清空
+                        enabled: false, 
+                        comm: {}, 
+                        cost: {}, 
+                        work: {} 
+                    }
+                };
+            }
+            return s;
+        });
+        
+        saveScheduleData(); // 💡 系統只會儲存到「目前正在觀看的那一天」
+        
+        renderScheduleAll();
+        if (document.getElementById('view-settle').classList.contains('active')) {
+            renderSettlementTable();
+        }
+        closeEditModal();
+        showToast("🔄 當日房間資訊已徹底重置");
+    }
+};
